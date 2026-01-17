@@ -6,11 +6,11 @@
 
 const CONFIG = {
   FOLDER_ID: '1ZSMSVBw9NswwvIAhUvqa081RfQ2RNiM8',
-  SHEET_NAME: 'Data',
-  SHEET_START_ROW: 2,
+  DELIMITER: ',',
   SKIP_ROWS: 1,
   COLS_TO_INCLUDE: [0, 1, 3, 4, 9, 11],
-  DELIMITER: ',',
+  SHEET_NAME: 'Data',
+  SHEET_START_ROW: 2,
   SYNC_DELETIONS: true,
 };
 
@@ -26,6 +26,14 @@ function onOpenTrigger() {
 }
 
 /**
+ * Clears import status. Called by dialog before starting import
+ * to prevent stale status from previous runs being displayed.
+ */
+function clearImportStatus() {
+  PropertiesService.getScriptProperties().deleteProperty('importStatus');
+}
+
+/**
  * Main sync logic. Called by the dialog via google.script.run.
  * 
  * Uses atomic batch processing: all data changes (deletions + additions) are
@@ -34,8 +42,6 @@ function onOpenTrigger() {
  */
 function importNewCSVFiles() {
   const props = PropertiesService.getScriptProperties();
-
-  props.deleteProperty('importStatus');
 
   const updateStatus = (message, done = false) => {
     props.setProperty('importStatus', JSON.stringify({ message, done }));

@@ -72,7 +72,6 @@
         function poll() {
           google.script.run
             .withSuccessHandler(function(result) {
-              // If status not yet set, keep polling (prevents race condition)
               if (!result || !result.message) {
                 setTimeout(poll, 400);
                 return;
@@ -94,9 +93,13 @@
             .getImportStatus();
         }
 
-        // Start import and begin polling
-        google.script.run.importNewCSVFiles();
-        setTimeout(poll, 300);
+        // Clear old status first (synchronously via callback), then start import, then poll
+        google.script.run
+          .withSuccessHandler(function() {
+            google.script.run.importNewCSVFiles();
+            setTimeout(poll, 300);
+          })
+          .clearImportStatus();
       })();
     </script>
   </body>
