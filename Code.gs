@@ -8,9 +8,9 @@ const CONFIG = {
   FOLDER_ID: '1ZSMSVBw9NswwvIAhUvqa081RfQ2RNiM8',
   SHEET_NAME: 'Data',
   SHEET_START_ROW: 2,
-  DELIMITER: ',',
   SKIP_ROWS: 1,
   COLS_TO_INCLUDE: [0, 1, 3, 4, 9, 11],
+  DELIMITER: ',',
   SYNC_DELETIONS: true,
 };
 
@@ -57,15 +57,21 @@ function importNewCSVFiles() {
       folderFiles.set(file.getName(), file);
     }
 
-    const lastRow = sheet.getLastRow();
-    const lastCol = sheet.getLastColumn() || 1;
+    // Determine the data region (from startRow to actual last row of content)
+    const sheetLastRow = sheet.getLastRow();
+    const sheetLastCol = sheet.getLastColumn() || 1;
+    
     let existingData = [];
     let deletedRowsCount = 0;
     let deletedFilesCount = 0;
 
-    // Read existing data into memory
-    if (lastRow >= startRow) {
-      existingData = sheet.getRange(startRow, 1, lastRow - startRow + 1, lastCol).getValues();
+    // Read existing data from the data region (startRow onwards)
+    if (sheetLastRow >= startRow) {
+      const numRows = sheetLastRow - startRow + 1;
+      existingData = sheet.getRange(startRow, 1, numRows, sheetLastCol).getValues();
+      
+      // Filter out completely empty rows (rows where all cells are empty)
+      existingData = existingData.filter(row => row.some(cell => cell !== ''));
     }
 
     // Filter out rows from deleted files (in memory)
@@ -88,7 +94,7 @@ function importNewCSVFiles() {
     }
 
     // Build set of already imported filenames for duplicate detection
-    const existingSet = new Set(filteredData.map(row => row[0]));
+    const existingSet = new Set(filteredData.map(row => row[0]).filter(name => name));
 
     // Import new files and collect rows in memory
     const newRows = [];
@@ -125,12 +131,12 @@ function importNewCSVFiles() {
     if (hasChanges) {
       updateStatus('Writing data...');
 
-      // Clear existing data area (clearContent doesn't trigger recalculation)
-      if (lastRow >= startRow) {
-        sheet.getRange(startRow, 1, lastRow - startRow + 1, lastCol).clearContent();
+      // Clear the entire data region from startRow downwards
+      if (sheetLastRow >= startRow) {
+        sheet.getRange(startRow, 1, sheetLastRow - startRow + 1, sheetLastCol).clearContent();
       }
 
-      // Write all data in a single atomic operation (triggers ONE recalculation)
+      // Write all data starting at startRow (atomic operation = one recalculation)
       if (finalData.length > 0) {
         // Normalize column count (pad shorter rows if needed)
         const maxCols = Math.max(...finalData.map(row => row.length));
@@ -141,6 +147,7 @@ function importNewCSVFiles() {
           return row;
         });
 
+        // Always write from startRow, not from getLastRow()
         sheet.getRange(startRow, 1, normalizedData.length, maxCols)
           .setValues(normalizedData);
       }
