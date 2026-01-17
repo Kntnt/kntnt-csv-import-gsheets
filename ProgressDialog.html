@@ -72,6 +72,12 @@
         function poll() {
           google.script.run
             .withSuccessHandler(function(result) {
+              // If status not yet set, keep polling
+              if (!result || !result.message) {
+                setTimeout(poll, 400);
+                return;
+              }
+              
               statusEl.textContent = result.message;
               if (result.done) {
                 spinnerEl.classList.add('hidden');

@@ -31,6 +31,10 @@ function onOpenTrigger() {
  */
 function importNewCSVFiles() {
   const props = PropertiesService.getScriptProperties();
+  
+  // Reset status immediately to prevent stale data from previous runs
+  props.deleteProperty('importStatus');
+  
   const updateStatus = (message, done = false) => {
     props.setProperty('importStatus', JSON.stringify({ message, done }));
   };
