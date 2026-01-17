@@ -7,10 +7,11 @@
 const CONFIG = {
   FOLDER_ID: '1ZSMSVBw9NswwvIAhUvqa081RfQ2RNiM8',
   SHEET_NAME: 'Data',
+  SHEET_START_ROW: 2
   DELIMITER: ',',
-  SKIP_HEADER: true,
-  COLS_TO_INCLUDE: [0, 1, 3, 4, 9, 11],  // Set to null or [] to import all columns
-  SYNC_DELETIONS: true
+  SKIP_ROWS: 1,
+  COLS_TO_INCLUDE: [0, 1, 3, 4, 9, 11],
+  SYNC_DELETIONS: true,
 };
 
 /**
@@ -26,15 +27,16 @@ function onOpenTrigger() {
 
 /**
  * Main sync logic. Called by the dialog via google.script.run.
- * Syncs the sheet with the Drive folder: removes orphaned rows, adds new files.
- * Progress is communicated via ScriptProperties for UI polling.
+ * 
+ * Uses atomic batch processing: all data changes (deletions + additions) are
+ * collected in memory and written in a single setValues() call. This ensures
+ * that formula recalculation is triggered only once, after all data is in place.
  */
 function importNewCSVFiles() {
   const props = PropertiesService.getScriptProperties();
-  
-  // Reset status immediately to prevent stale data from previous runs
+
   props.deleteProperty('importStatus');
-  
+
   const updateStatus = (message, done = false) => {
     props.setProperty('importStatus', JSON.stringify({ message, done }));
   };
@@ -45,6 +47,7 @@ function importNewCSVFiles() {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
     const folder = DriveApp.getFolderById(CONFIG.FOLDER_ID);
+    const startRow = CONFIG.SHEET_START_ROW;
 
     // Build map of CSV files currently in the Drive folder
     const files = folder.getFilesByType(MimeType.CSV);
@@ -55,47 +58,40 @@ function importNewCSVFiles() {
     }
 
     const lastRow = sheet.getLastRow();
+    const lastCol = sheet.getLastColumn() || 1;
     let existingData = [];
-    let existingSet = new Set();
     let deletedRowsCount = 0;
     let deletedFilesCount = 0;
 
-    // Read existing data once and handle deletions in memory
-    if (lastRow > 0) {
-      existingData = sheet.getDataRange().getValues();
-
-      if (CONFIG.SYNC_DELETIONS) {
-        updateStatus('Checking for deleted files...');
-
-        const deletedFiles = new Set();
-        const filteredData = existingData.filter(row => {
-          const fileName = row[0];
-          if (fileName && !folderFiles.has(fileName)) {
-            deletedFiles.add(fileName);
-            return false;
-          }
-          return true;
-        });
-
-        deletedFilesCount = deletedFiles.size;
-        deletedRowsCount = existingData.length - filteredData.length;
-
-        // Rewrite sheet only if rows were removed (single API call vs N deleteRow calls)
-        if (deletedRowsCount > 0) {
-          sheet.clearContents();
-          if (filteredData.length > 0) {
-            sheet.getRange(1, 1, filteredData.length, filteredData[0].length)
-              .setValues(filteredData);
-          }
-          existingData = filteredData;
-        }
-      }
-
-      existingSet = new Set(existingData.map(row => row[0]));
+    // Read existing data into memory
+    if (lastRow >= startRow) {
+      existingData = sheet.getRange(startRow, 1, lastRow - startRow + 1, lastCol).getValues();
     }
 
-    // Import new files
-    const allNewRows = [];
+    // Filter out rows from deleted files (in memory)
+    let filteredData = existingData;
+    if (CONFIG.SYNC_DELETIONS && existingData.length > 0) {
+      updateStatus('Checking for deleted files...');
+
+      const deletedFiles = new Set();
+      filteredData = existingData.filter(row => {
+        const fileName = row[0];
+        if (fileName && !folderFiles.has(fileName)) {
+          deletedFiles.add(fileName);
+          return false;
+        }
+        return true;
+      });
+
+      deletedFilesCount = deletedFiles.size;
+      deletedRowsCount = existingData.length - filteredData.length;
+    }
+
+    // Build set of already imported filenames for duplicate detection
+    const existingSet = new Set(filteredData.map(row => row[0]));
+
+    // Import new files and collect rows in memory
+    const newRows = [];
     let newFilesCount = 0;
     const importAllCols = !CONFIG.COLS_TO_INCLUDE || CONFIG.COLS_TO_INCLUDE.length === 0;
 
@@ -107,28 +103,50 @@ function importNewCSVFiles() {
       const csvContent = file.getBlob().getDataAsString('UTF-8');
       const csvData = Utilities.parseCsv(csvContent, CONFIG.DELIMITER);
 
-      if (csvData.length === 0) continue;
+      if (csvData.length <= CONFIG.SKIP_ROWS) continue;
 
-      const startIdx = CONFIG.SKIP_HEADER ? 1 : 0;
-
-      for (let i = startIdx; i < csvData.length; i++) {
+      for (let i = CONFIG.SKIP_ROWS; i < csvData.length; i++) {
         const row = csvData[i];
         const dataRow = importAllCols
           ? row
           : CONFIG.COLS_TO_INCLUDE.map(idx => row[idx] ?? '');
-        allNewRows.push([fileName, ...dataRow]);
+        newRows.push([fileName, ...dataRow]);
       }
 
       newFilesCount++;
     }
 
-    // Batch write all new rows
-    if (allNewRows.length > 0) {
-      sheet.getRange(sheet.getLastRow() + 1, 1, allNewRows.length, allNewRows[0].length)
-        .setValues(allNewRows);
+    // Combine filtered existing data with new rows
+    const finalData = [...filteredData, ...newRows];
+
+    // Determine if we need to write anything
+    const hasChanges = deletedRowsCount > 0 || newRows.length > 0;
+
+    if (hasChanges) {
+      updateStatus('Writing data...');
+
+      // Clear existing data area (clearContent doesn't trigger recalculation)
+      if (lastRow >= startRow) {
+        sheet.getRange(startRow, 1, lastRow - startRow + 1, lastCol).clearContent();
+      }
+
+      // Write all data in a single atomic operation (triggers ONE recalculation)
+      if (finalData.length > 0) {
+        // Normalize column count (pad shorter rows if needed)
+        const maxCols = Math.max(...finalData.map(row => row.length));
+        const normalizedData = finalData.map(row => {
+          if (row.length < maxCols) {
+            return [...row, ...Array(maxCols - row.length).fill('')];
+          }
+          return row;
+        });
+
+        sheet.getRange(startRow, 1, normalizedData.length, maxCols)
+          .setValues(normalizedData);
+      }
     }
 
-    const summary = buildSummary(newFilesCount, allNewRows.length, deletedFilesCount, deletedRowsCount);
+    const summary = buildSummary(newFilesCount, newRows.length, deletedFilesCount, deletedRowsCount);
     updateStatus(summary, true);
 
   } catch (error) {
@@ -161,5 +179,5 @@ function buildSummary(newFiles, newRows, deletedFiles, deletedRows) {
  */
 function getImportStatus() {
   const status = PropertiesService.getScriptProperties().getProperty('importStatus');
-  return status ? JSON.parse(status) : { message: 'Ready', done: false };
+  return status ? JSON.parse(status) : null;
 }

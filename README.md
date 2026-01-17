@@ -9,7 +9,8 @@ A Google Apps Script that automatically syncs CSV files from a Google Drive fold
 - **Duplicate detection** – Skips files that have already been imported
 - **Sync deletions** – Optionally removes rows when source CSV files are deleted
 - **Selective columns** – Import all columns or only the ones you need
-- **Performance optimized** – Batch operations minimize API calls
+- **Header preservation** – Protect rows at the top of your sheet from being overwritten
+- **Atomic writes** – All changes are written in a single operation, triggering formula recalculation only once
 
 ## File Structure
 
@@ -42,10 +43,11 @@ Edit the `CONFIG` object at the top of `Code.gs`:
 const CONFIG = {
   FOLDER_ID: 'your-folder-id-here',
   SHEET_NAME: 'Data',
+  SHEET_START_ROW: 1
   DELIMITER: ',',
-  SKIP_HEADER: true,
+  SKIP_ROWS: 1,
   COLS_TO_INCLUDE: [0, 1, 3, 4, 9, 11],
-  SYNC_DELETIONS: true
+  SYNC_DELETIONS: true,
 };
 ```
 
@@ -53,10 +55,11 @@ const CONFIG = {
 |--------|-------------|
 | `FOLDER_ID` | Google Drive folder ID containing your CSV files. Find it in the folder's URL: `drive.google.com/drive/folders/[FOLDER_ID]` |
 | `SHEET_NAME` | Name of the sheet tab where data will be imported. Case-sensitive. |
+| `SHEET_START_ROW` | First row in the sheet where data will be written. Use this to preserve header rows or other content at the top. For example, set to `2` to keep row 1 for headers, or `7` to preserve rows 1–6. |
 | `DELIMITER` | Character separating values in your CSV files: `','`, `';'`, or `'\t'` |
-| `SKIP_HEADER` | Set `true` to skip the first row of each CSV file |
-| `COLS_TO_INCLUDE` | Zero-indexed array of columns to import (0 = A, 1 = B, etc). Set to `null` or `[]` to import all columns |
-| `SYNC_DELETIONS` | Set `true` to remove rows when their source CSV is deleted from the folder |
+| `SKIP_ROWS` | Number of rows to skip at the beginning of each CSV file. Set to `1` to skip a header row, `0` to import all rows. |
+| `COLS_TO_INCLUDE` | Zero-indexed array of columns to import (0 = A, 1 = B, etc). Set to `null` or `[]` to import all columns. |
+| `SYNC_DELETIONS` | Set `true` to remove rows when their source CSV is deleted from the folder. |
 
 > **Note:** Column A in your sheet is reserved for the source filename. Your CSV data starts in column B.
 
@@ -89,9 +92,20 @@ The import dialog should appear automatically. Note that it may take a few secon
 1. On spreadsheet open, the trigger displays a modal dialog
 2. The dialog starts the import process and polls for status updates
 3. The script reads all CSV filenames from the configured Drive folder
-4. If `SYNC_DELETIONS` is enabled, rows from deleted files are removed
-5. New CSV files are parsed and their data is batch-written to the sheet
-6. The dialog shows a summary and a close button
+4. Existing data is loaded into memory
+5. If `SYNC_DELETIONS` is enabled, rows from deleted files are filtered out (in memory)
+6. New CSV files are parsed and added to the data (in memory)
+7. All data is written to the sheet in a single atomic operation
+8. Formula recalculation triggers once, after all data is in place
+9. The dialog shows a summary and a close button
+
+## Performance
+
+The script is optimized for large datasets:
+
+- **Single atomic write** – All changes (deletions + additions) are combined and written in one `setValues()` call, ensuring formulas recalculate only once
+- **In-memory processing** – Data filtering and merging happens in memory, minimizing API calls
+- **Batch operations** – No loops with individual cell writes
 
 ## Limitations
 
