@@ -40,7 +40,7 @@
   <body>
     <div class="status-container">
       <div id="spinner" class="spinner"></div>
-      <div id="status">Starting...</div>
+      <div id="status">Connecting...</div>
     </div>
 
     <script>
@@ -65,10 +65,11 @@
                 return;
               }
 
-              statusEl.textContent = result.message;
               if (result.done) {
+                statusEl.innerHTML = result.message + '<br><br><em>Close this dialog to continue.</em>';
                 spinnerEl.classList.add('hidden');
               } else {
+                statusEl.textContent = result.message;
                 setTimeout(poll, 400);
               }
             })

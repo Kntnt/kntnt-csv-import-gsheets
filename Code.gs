@@ -61,10 +61,14 @@ function onOpenTrigger() {
   const props = PropertiesService.getScriptProperties();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const currentLocale = ss.getSpreadsheetLocale();
+  const savedLocale = props.getProperty(ORIGINAL_LOCALE_KEY);
+
+  console.log('onOpenTrigger: currentLocale=' + currentLocale + ', CSV_LOCALE=' + CONFIG.CSV_LOCALE + ', savedLocale=' + savedLocale);
 
   // If we haven't switched to CSV locale yet, do it now
   // This triggers a page reload, after which we'll show the dialog
-  if (currentLocale !== CONFIG.CSV_LOCALE && !props.getProperty(ORIGINAL_LOCALE_KEY)) {
+  if (currentLocale !== CONFIG.CSV_LOCALE && !savedLocale) {
+    console.log('onOpenTrigger: Switching locale from ' + currentLocale + ' to ' + CONFIG.CSV_LOCALE);
     props.setProperty(ORIGINAL_LOCALE_KEY, currentLocale);
     ss.setSpreadsheetLocale(CONFIG.CSV_LOCALE);
     return; // Page will reload
@@ -85,12 +89,18 @@ function restoreLocale() {
   const props = PropertiesService.getScriptProperties();
   const savedLocale = props.getProperty(ORIGINAL_LOCALE_KEY);
 
+  console.log('restoreLocale: savedLocale=' + savedLocale);
+
   if (savedLocale) {
     props.deleteProperty(ORIGINAL_LOCALE_KEY);
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    if (ss.getSpreadsheetLocale() !== savedLocale) {
+    const currentLocale = ss.getSpreadsheetLocale();
+    console.log('restoreLocale: currentLocale=' + currentLocale + ', restoring to ' + savedLocale);
+    if (currentLocale !== savedLocale) {
       ss.setSpreadsheetLocale(savedLocale);
     }
+  } else {
+    console.log('restoreLocale: No saved locale found');
   }
 }
 
