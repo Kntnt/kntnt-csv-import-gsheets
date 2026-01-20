@@ -19,6 +19,9 @@ const CONFIG = {
 /** Property key for storing original locale during import. */
 const ORIGINAL_LOCALE_KEY = 'originalLocale';
 
+/** Property key to prevent restart after locale restore. */
+const IMPORT_DONE_KEY = 'importDone';
+
 /**
  * Recursively collects CSV files from a folder that match CSV_FILE_REGEX.
  */
@@ -62,8 +65,16 @@ function onOpenTrigger() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const currentLocale = ss.getSpreadsheetLocale();
   const savedLocale = props.getProperty(ORIGINAL_LOCALE_KEY);
+  const importDone = props.getProperty(IMPORT_DONE_KEY);
 
-  console.log('onOpenTrigger: currentLocale=' + currentLocale + ', CSV_LOCALE=' + CONFIG.CSV_LOCALE + ', savedLocale=' + savedLocale);
+  console.log('onOpenTrigger: currentLocale=' + currentLocale + ', CSV_LOCALE=' + CONFIG.CSV_LOCALE + ', savedLocale=' + savedLocale + ', importDone=' + importDone);
+
+  // If import just completed and locale was restored, don't restart
+  if (importDone) {
+    console.log('onOpenTrigger: Import was just completed, clearing flag and exiting');
+    props.deleteProperty(IMPORT_DONE_KEY);
+    return;
+  }
 
   // If we haven't switched to CSV locale yet, do it now
   // This triggers a page reload, after which we'll show the dialog
@@ -92,12 +103,16 @@ function restoreLocale() {
   console.log('restoreLocale: savedLocale=' + savedLocale);
 
   if (savedLocale) {
+    // Set flag BEFORE changing locale to prevent onOpenTrigger from restarting
+    props.setProperty(IMPORT_DONE_KEY, 'true');
     props.deleteProperty(ORIGINAL_LOCALE_KEY);
+
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const currentLocale = ss.getSpreadsheetLocale();
     console.log('restoreLocale: currentLocale=' + currentLocale + ', restoring to ' + savedLocale);
     if (currentLocale !== savedLocale) {
       ss.setSpreadsheetLocale(savedLocale);
+      // Page will reload, onOpenTrigger will see IMPORT_DONE_KEY and exit
     }
   } else {
     console.log('restoreLocale: No saved locale found');
@@ -121,6 +136,11 @@ function importNewCSVFiles() {
     updateStatus('Initializing...');
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // Log locale at import time to verify it changed
+    const importLocale = ss.getSpreadsheetLocale();
+    console.log('importNewCSVFiles: Current locale at import time = ' + importLocale + ', expected = ' + CONFIG.CSV_LOCALE);
+
     const sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
     currentStep = 'accessing folder';
     const folder = DriveApp.getFolderById(CONFIG.CSV_FOLDER_ID);
