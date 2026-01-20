@@ -40,7 +40,7 @@
   <body>
     <div class="status-container">
       <div id="spinner" class="spinner"></div>
-      <div id="status">Loading...</div>
+      <div id="status">Starting...</div>
     </div>
 
     <script>
@@ -48,17 +48,13 @@
         const statusEl = document.getElementById('status');
         const spinnerEl = document.getElementById('spinner');
 
-        // Confirm JS is running immediately
-        statusEl.textContent = 'JS started...';
-
         // When dialog closes (via X icon), restore the original locale
         try {
           google.script.host.setCloseHandler(function() {
             google.script.run.restoreLocale();
           });
-          statusEl.textContent = 'CloseHandler set...';
         } catch (e) {
-          statusEl.textContent = 'CloseHandler error: ' + e.message;
+          // Ignore - closeHandler may not be available in all contexts
         }
 
         function poll() {
@@ -77,32 +73,20 @@
               }
             })
             .withFailureHandler(function(err) {
-              statusEl.textContent = 'Poll error: ' + (err.message || 'Connection lost');
+              statusEl.textContent = 'Error: ' + (err.message || 'Connection lost');
               spinnerEl.classList.add('hidden');
             })
             .getImportStatus();
         }
 
-        // Confirm JavaScript is running
-        statusEl.textContent = 'JavaScript running, calling server...';
+        // Clear old status, start import, then poll
         google.script.run
           .withSuccessHandler(function() {
-            // Step 2: Start import
-            statusEl.textContent = 'Starting import...';
-            google.script.run
-              .withFailureHandler(function(err) {
-                statusEl.textContent = 'Import error: ' + (err.message || 'Unknown error');
-                spinnerEl.classList.add('hidden');
-              })
-              .importNewCSVFiles();
-            // Step 3: Start polling
-            setTimeout(function() {
-              statusEl.textContent = 'Waiting for status...';
-              poll();
-            }, 500);
+            google.script.run.importNewCSVFiles();
+            setTimeout(poll, 500);
           })
           .withFailureHandler(function(err) {
-            statusEl.textContent = 'Clear error: ' + (err.message || 'Unknown error');
+            statusEl.textContent = 'Error: ' + (err.message || 'Failed to start');
             spinnerEl.classList.add('hidden');
           })
           .clearImportStatus();
