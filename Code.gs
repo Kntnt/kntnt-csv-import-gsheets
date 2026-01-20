@@ -117,15 +117,19 @@ function importNewCSVFiles() {
 
   let originalLocale = null;
   let ss = null;
+  let currentStep = 'initializing';
+  let currentFile = null;
 
   try {
     updateStatus('Initializing...');
 
     ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
+    currentStep = 'accessing folder';
     const folder = DriveApp.getFolderById(CONFIG.CSV_FOLDER_ID);
     const { SHEET_START_ROW: startRow } = CONFIG;
 
+    currentStep = 'scanning for files';
     updateStatus('Scanning for files...');
     const folderFiles = getMatchingFiles(folder, CONFIG.CSV_FILE_REGEX);
 
@@ -167,11 +171,13 @@ function importNewCSVFiles() {
     const importAllCols = !CONFIG.CSV_COLS_TO_INCLUDE
       || CONFIG.CSV_COLS_TO_INCLUDE.length === 0;
 
+    currentStep = 'reading CSV files';
     folderFiles.forEach((file, fileName) => {
       if (existingSet.has(fileName)) {
         return;
       }
 
+      currentFile = fileName;
       updateStatus(`Reading: ${fileName}`);
 
       const csvContent = file.getBlob().getDataAsString('UTF-8');
@@ -196,7 +202,9 @@ function importNewCSVFiles() {
     const finalData = [...filteredData, ...newRows];
     const hasChanges = deletedRowsCount > 0 || newRows.length > 0;
 
+    currentFile = null;
     if (hasChanges) {
+      currentStep = 'writing data';
       updateStatus('Writing data...');
 
       // Temporarily change locale if CSV uses different decimal separator
@@ -229,28 +237,42 @@ function importNewCSVFiles() {
           .setValues(normalizedData);
       }
 
-      // Restore original locale (may trigger page reload)
+      // Build and show summary BEFORE restoring locale (which may trigger page reload)
+      const summary = buildSummary(newFilesCount, newRows.length, deletedFilesCount, deletedRowsCount);
+
+      // Restore original locale (may trigger page reload that closes dialog)
       if (originalLocale) {
         SpreadsheetApp.flush();
-        // Refresh guard timestamp before second locale change
+        // Show summary and give dialog time to display it before reload
+        updateStatus(summary, true);
+        Utilities.sleep(1500);
+        // Refresh guard timestamp before locale change
         props.setProperty('lastImportTime', String(Date.now()));
         ss.setSpreadsheetLocale(originalLocale);
         originalLocale = null;
+        return; // Exit early - summary already shown
       }
     }
 
     const summary = buildSummary(newFilesCount, newRows.length, deletedFilesCount, deletedRowsCount);
     updateStatus(summary, true);
   } catch (error) {
+    // Show error and give dialog time to display it BEFORE restoring locale
+    const errorMsg = error.message || 'Unknown error';
+    const context = currentFile
+      ? `Error while ${currentStep} (${currentFile}): ${errorMsg}`
+      : `Error while ${currentStep}: ${errorMsg}`;
+    updateStatus(context, true);
+
     if (originalLocale && ss) {
       try {
+        Utilities.sleep(1500);
         props.setProperty('lastImportTime', String(Date.now()));
         ss.setSpreadsheetLocale(originalLocale);
       } catch (restoreError) {
         // Ignore restore errors
       }
     }
-    updateStatus(`Error: ${error.message}`, true);
   }
 }
 
