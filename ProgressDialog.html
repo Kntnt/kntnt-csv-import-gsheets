@@ -35,6 +35,24 @@
         line-height: 1.5;
         word-break: break-word;
       }
+      .button-container {
+        margin-top: 20px;
+        text-align: right;
+      }
+      #closeBtn {
+        background: #1a73e8;
+        color: white;
+        border: none;
+        padding: 10px 24px;
+        border-radius: 4px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        display: none;
+      }
+      #closeBtn:hover { background: #1557b0; }
+      #closeBtn.visible { display: inline-block; }
+      #closeBtn:disabled { background: #94c4f7; cursor: default; }
     </style>
   </head>
   <body>
@@ -42,20 +60,34 @@
       <div id="spinner" class="spinner"></div>
       <div id="status">Connecting...</div>
     </div>
+    <div class="button-container">
+      <button id="closeBtn">Close</button>
+    </div>
 
     <script>
       (function() {
         const statusEl = document.getElementById('status');
         const spinnerEl = document.getElementById('spinner');
+        const closeBtn = document.getElementById('closeBtn');
 
-        // When dialog closes (via X icon), restore the original locale
+        // Backup: restore locale if user closes via X icon
         try {
           google.script.host.setCloseHandler(function() {
             google.script.run.restoreLocale();
           });
         } catch (e) {
-          // Ignore - closeHandler may not be available in all contexts
+          // Ignore
         }
+
+        // Close button handler
+        closeBtn.addEventListener('click', function() {
+          closeBtn.disabled = true;
+          closeBtn.textContent = 'Closing...';
+          google.script.run
+            .withSuccessHandler(function() { google.script.host.close(); })
+            .withFailureHandler(function() { google.script.host.close(); })
+            .restoreLocale();
+        });
 
         function poll() {
           google.script.run
@@ -65,25 +97,18 @@
                 return;
               }
 
+              statusEl.textContent = result.message;
               if (result.done) {
-                statusEl.innerHTML = result.message + '<br><br><a href="#" id="closeLink">Click here to close</a>';
                 spinnerEl.classList.add('hidden');
-                document.getElementById('closeLink').addEventListener('click', function(e) {
-                  e.preventDefault();
-                  this.textContent = 'Closing...';
-                  google.script.run
-                    .withSuccessHandler(function() { google.script.host.close(); })
-                    .withFailureHandler(function() { google.script.host.close(); })
-                    .restoreLocale();
-                });
+                closeBtn.classList.add('visible');
               } else {
-                statusEl.textContent = result.message;
                 setTimeout(poll, 400);
               }
             })
             .withFailureHandler(function(err) {
               statusEl.textContent = 'Error: ' + (err.message || 'Connection lost');
               spinnerEl.classList.add('hidden');
+              closeBtn.classList.add('visible');
             })
             .getImportStatus();
         }
@@ -97,6 +122,7 @@
           .withFailureHandler(function(err) {
             statusEl.textContent = 'Error: ' + (err.message || 'Failed to start');
             spinnerEl.classList.add('hidden');
+            closeBtn.classList.add('visible');
           })
           .clearImportStatus();
       })();
