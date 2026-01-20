@@ -78,9 +78,12 @@ function onOpenTrigger() {
   if (lastImport) {
     const elapsed = Date.now() - parseInt(lastImport, 10);
     if (elapsed < IMPORT_GUARD_TIMEOUT_MS) {
-      props.deleteProperty('lastImportTime');
+      // Don't delete the property here - multiple onOpenTrigger calls may race
+      // Let the property expire naturally based on timestamp
       return;
     }
+    // Only delete if guard has expired (older than timeout)
+    props.deleteProperty('lastImportTime');
   }
 
   const html = HtmlService.createHtmlOutputFromFile('ProgressDialog')
