@@ -40,7 +40,7 @@
   <body>
     <div class="status-container">
       <div id="spinner" class="spinner"></div>
-      <div id="status">Starting import...</div>
+      <div id="status">Loading...</div>
     </div>
 
     <script>
@@ -75,8 +75,8 @@
             .getImportStatus();
         }
 
-        // Step 1: Clear old status
-        statusEl.textContent = 'Clearing old status...';
+        // Confirm JavaScript is running
+        statusEl.textContent = 'JavaScript running, calling server...';
         google.script.run
           .withSuccessHandler(function() {
             // Step 2: Start import
