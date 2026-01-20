@@ -87,13 +87,13 @@ function onOpenTrigger() {
 
   // Show dialog - either after locale switch or if no switch was needed
   const template = HtmlService.createTemplateFromFile('ProgressDialog');
-  template.localeChanged = savedLocale ? true : false;
   template.originalLocale = savedLocale || '';
   template.currentLocale = CONFIG.CSV_LOCALE;
 
+  const dialogHeight = savedLocale ? 250 : 180;
   const html = template.evaluate()
     .setWidth(450)
-    .setHeight(savedLocale ? 250 : 180);
+    .setHeight(dialogHeight);
   SpreadsheetApp.getUi().showModalDialog(html, 'CSV Import');
 }
 

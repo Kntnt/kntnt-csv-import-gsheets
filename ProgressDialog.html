@@ -70,11 +70,11 @@
       <div id="spinner" class="spinner"></div>
       <div id="status">Connecting...</div>
     </div>
-    <? if (localeChanged) { ?>
+    <? if (originalLocale) { ?>
     <div class="warning">
-      <strong>OBS!</strong> Locale har ändrats från <?= originalLocale ?> till <?= currentLocale ?> för att importera CSV-filer korrekt.
+      <strong>OBS!</strong> Locale har tillfälligt ändrats från <strong><?= originalLocale ?></strong> till <strong><?= currentLocale ?></strong> för att importera CSV-filer korrekt.
       Klicka på <strong>Close</strong>-knappen när importen är klar för att återställa locale automatiskt.
-      Om du stänger med X måste du manuellt ändra tillbaka locale.
+      Om du stänger med X måste du manuellt ändra tillbaka locale i kalkylbladets inställningar.
     </div>
     <? } ?>
     <div class="button-container">
