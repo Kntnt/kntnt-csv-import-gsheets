@@ -42,33 +42,33 @@ Edit the `CONFIG` object at the top of `Code.gs`:
 
 ```javascript
 const CONFIG = {
-  FOLDER_ID: 'your-folder-id-here',
-  FILE_REGEX: '\\.csv$',
-  DELIMITER: ',',
-  SKIP_ROWS: 1,
-  COLS_TO_INCLUDE: [0, 1, 3, 4, 9, 11],
+  CSV_FOLDER_ID: 'your-folder-id-here',
+  CSV_FILE_REGEX: '\\.csv$',
+  CSV_START_ROW: 2,
+  CSV_DELIMITER: ',',
+  CSV_COLS_TO_INCLUDE: [0, 1, 3, 4, 9, 11],
+  CSV_DECIMAL_SEPARATOR: ',',
   SHEET_NAME: 'Data',
   SHEET_START_ROW: 2,
-  SYNC_DELETIONS: true,
-  CSV_DECIMAL_SEPARATOR: ',',
   SHEET_DECIMAL_SEPARATOR: ',',
+  SYNC_DELETIONS: true,
 };
 ```
 
 | Option | Description |
 |--------|-------------|
-| `FOLDER_ID` | Google Drive folder ID containing your CSV files. Find it in the folder's URL: `drive.google.com/drive/folders/[FOLDER_ID]` |
-| `FILE_REGEX` | Regex pattern to filter which CSV files to import. Matches against the relative path from the root folder. See examples below. |
-| `DELIMITER` | Character separating values in your CSV files: `','`, `';'`, or `'\t'` |
-| `SKIP_ROWS`       | Number of rows to skip at the beginning of each CSV file. Set to `1` to skip a header row, `0` to import all rows. |
-| `COLS_TO_INCLUDE` | Zero-indexed array of columns to import (0 = A, 1 = B, etc). Set to `null` or `[]` to import all columns. |
-| `SHEET_NAME`      | Name of the sheet tab where data will be imported. Case-sensitive. |
-| `SHEET_START_ROW` | First row in the sheet where data will be written. Use this to preserve header rows or other content at the top. For example, set to `2` to keep row 1 for headers, or `7` to preserve rows 1–6. |
-| `SYNC_DELETIONS` | Set `true` to remove rows when their source CSV is deleted from the folder. |
+| `CSV_FOLDER_ID` | Google Drive folder ID containing your CSV files. Find it in the folder's URL: `drive.google.com/drive/folders/[FOLDER_ID]` |
+| `CSV_FILE_REGEX` | Regex pattern to filter which CSV files to import. Matches against the relative path from the root folder. See examples below. |
+| `CSV_START_ROW` | Row number to start reading from in each CSV file (0-indexed). Set to `1` to skip a header row, `2` to skip both header and second row, `0` to import all rows. |
+| `CSV_DELIMITER` | Character separating values in your CSV files: `','`, `';'`, or `'\t'` |
+| `CSV_COLS_TO_INCLUDE` | Zero-indexed array of columns to import (0 = A, 1 = B, etc). Set to `null` or `[]` to import all columns. |
 | `CSV_DECIMAL_SEPARATOR` | Decimal separator used in your CSV files: `','` (default) or `'.'`. |
+| `SHEET_NAME` | Name of the sheet tab where data will be imported. Case-sensitive. |
+| `SHEET_START_ROW` | First row in the sheet where data will be written. Use this to preserve header rows or other content at the top. For example, set to `2` to keep row 1 for headers, or `7` to preserve rows 1–6. |
 | `SHEET_DECIMAL_SEPARATOR` | Decimal separator expected by the spreadsheet: `','` (default) or `'.'`. If different from `CSV_DECIMAL_SEPARATOR`, values like `3.14` will be converted to `3,14` (or vice versa). |
+| `SYNC_DELETIONS` | Set `true` to remove rows when their source CSV is deleted from the folder. |
 
-#### FILE_REGEX Examples
+#### CSV_FILE_REGEX Examples
 
 | Pattern | Description |
 |---------|-------------|
@@ -90,7 +90,7 @@ Press **Ctrl+S** (Windows) or **Cmd+S** (Mac) and wait for "Project saved" confi
 
 Simple triggers can't show modal dialogs due to Google's security restrictions. You need an installable trigger:
 
-1. In the Apps Script editor, click the **clock icon** (⏰) in the left sidebar
+1. In the Apps Script editor, click the **clock icon** in the left sidebar
 2. Click **+ Add Trigger** (bottom right)
 3. Configure:
    - **Choose which function to run:** `onOpenTrigger`
@@ -105,7 +105,7 @@ Simple triggers can't show modal dialogs due to Google's security restrictions. 
 The first time you use the script, you need to authorize access to Google Drive:
 
 1. In the Apps Script editor, select `importNewCSVFiles` from the function dropdown
-2. Click **Run** (▶️)
+2. Click **Run**
 3. If prompted, click through the authorization dialog and grant permissions
 4. You only need to do this once per spreadsheet
 
@@ -120,7 +120,7 @@ The import dialog should appear automatically. Note that it may take a few secon
 1. On spreadsheet open, the trigger displays a modal dialog
 2. The dialog clears any stale status, then starts the import process
 3. The dialog polls for status updates while import runs
-4. The script recursively scans the configured Drive folder and subfolders for CSV files matching `FILE_REGEX`
+4. The script recursively scans the configured Drive folder and subfolders for CSV files matching `CSV_FILE_REGEX`
 5. Existing data is loaded into memory
 6. If `SYNC_DELETIONS` is enabled, rows from deleted files are filtered out (in memory)
 7. New CSV files are parsed and added to the data (in memory)
