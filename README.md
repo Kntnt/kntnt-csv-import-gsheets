@@ -71,6 +71,7 @@ const CONFIG = {
 | `\\.csv$` | All CSV files in all folders (default) |
 | `^[^/]*\\.csv$` | Only CSV files in the root folder (no subfolders) |
 | `Diagram\\.csv$` | Files ending with "Diagram.csv" |
+| `^[^/]+/Diagram\\.csv$` | Files named exactly "Diagram.csv" in immediate subfolders only |
 | `/Reports/` | Files in any folder named "Reports" |
 | `^2024/` | Files in subfolders starting with "2024" |
 | `^Project1/.*\\.csv$` | All CSV files under the "Project1" folder |
