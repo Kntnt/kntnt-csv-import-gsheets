@@ -22,6 +22,12 @@ const CONFIG = {
 const ORIGINAL_LOCALE_KEY = 'originalLocale';
 
 /**
+ * Property key for indicating an import is in progress.
+ * Used to prevent showing dialog again when locale change triggers reload.
+ */
+const IMPORT_IN_PROGRESS_KEY = 'importInProgress';
+
+/**
  * Recursively collects CSV files from a folder that match CSV_FILE_REGEX.
  * @param {Folder} rootFolder - The root folder to search
  * @param {string} regexPattern - The regex pattern to match file paths
@@ -60,11 +66,19 @@ function getMatchingFiles(rootFolder, regexPattern) {
  * Entry point for the installable onOpen trigger.
  * Displays the progress dialog which then initiates the import.
  *
- * If a previous import's locale was not restored (user closed dialog via X),
- * restores it first which triggers a page reload.
+ * Handles three scenarios:
+ * 1. Import in progress (locale change triggered reload) - skip, let import continue
+ * 2. Import done but user closed via X - restore locale, then show dialog on next reload
+ * 3. Normal open - show dialog
  */
 function onOpenTrigger() {
   const props = PropertiesService.getScriptProperties();
+
+  // If import is in progress, skip - the import will continue and finish
+  // (this happens when locale change triggers a page reload mid-import)
+  if (props.getProperty(IMPORT_IN_PROGRESS_KEY)) {
+    return;
+  }
 
   // Check if locale needs to be restored from a previous import
   // (happens if user closed the dialog via X icon instead of Close button)
@@ -115,6 +129,10 @@ function importNewCSVFiles() {
 
   try {
     updateStatus('Initializing...');
+
+    // Mark import as in progress BEFORE any locale change
+    // This prevents onOpenTrigger from showing dialog again if page reloads
+    props.setProperty(IMPORT_IN_PROGRESS_KEY, 'true');
 
     ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
@@ -232,12 +250,18 @@ function importNewCSVFiles() {
 
     const summary = buildSummary(newFilesCount, newRows.length, deletedFilesCount, deletedRowsCount);
     updateStatus(summary, true);
+
+    // Import complete - clear the in-progress flag
+    props.deleteProperty(IMPORT_IN_PROGRESS_KEY);
   } catch (error) {
     const errorMsg = error.message || 'Unknown error';
     const context = currentFile
       ? `Error while ${currentStep} (${currentFile}): ${errorMsg}`
       : `Error while ${currentStep}: ${errorMsg}`;
     updateStatus(context, true);
+
+    // Import failed - clear the in-progress flag
+    props.deleteProperty(IMPORT_IN_PROGRESS_KEY);
   }
 }
 
@@ -248,8 +272,11 @@ function importNewCSVFiles() {
  */
 function restoreLocale() {
   const props = PropertiesService.getScriptProperties();
-  const savedLocale = props.getProperty(ORIGINAL_LOCALE_KEY);
 
+  // Clear in-progress flag (should already be cleared, but ensure it)
+  props.deleteProperty(IMPORT_IN_PROGRESS_KEY);
+
+  const savedLocale = props.getProperty(ORIGINAL_LOCALE_KEY);
   if (savedLocale) {
     props.deleteProperty(ORIGINAL_LOCALE_KEY);
     const ss = SpreadsheetApp.getActiveSpreadsheet();
