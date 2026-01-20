@@ -10,51 +10,29 @@ const CONFIG = {
   CSV_START_ROW: 2,
   CSV_DELIMITER: ',',
   CSV_COLS_TO_INCLUDE: [0, 1, 3, 4, 9, 11],
-  CSV_DECIMAL_SEPARATOR: ',',
+  CSV_DECIMAL_SEPARATOR: '.',
   SHEET_NAME: 'Data',
   SHEET_START_ROW: 2,
-  SHEET_DECIMAL_SEPARATOR: ',',
   SYNC_DELETIONS: true,
 };
 
 /**
- * Converts decimal separators in a value if needed.
- * Only converts values that look like numbers (integers or decimals).
- * @param {string|number} value - The value to convert
- * @param {string} fromSeparator - The source decimal separator
- * @param {string} toSeparator - The target decimal separator
- * @returns {string} The converted value
+ * Locales for each decimal separator type.
+ * Used when temporarily switching locale during import.
  */
-function convertDecimalSeparator(value, fromSeparator, toSeparator) {
-  const stringValue = typeof value !== 'string' ? String(value) : value;
-
-  const pattern = fromSeparator === '.'
-    ? /^-?[0-9]+(\.[0-9]+)?$/
-    : /^-?[0-9]+(,[0-9]+)?$/;
-
-  if (pattern.test(stringValue.trim())) {
-    return stringValue.replace(fromSeparator, toSeparator);
-  }
-  return stringValue;
-}
+const DECIMAL_LOCALES = {
+  '.': 'en_US',
+  ',': 'sv_SE',
+};
 
 /**
- * Converts all decimal separators in a row of data.
- * @param {Array} row - The row to convert
- * @param {string} fromSeparator - The source decimal separator
- * @param {string} toSeparator - The target decimal separator
- * @returns {Array} The converted row
+ * Guard timeout in milliseconds.
+ * If import completed within this time, skip showing dialog on reload.
  */
-function convertRowDecimals(row, fromSeparator, toSeparator) {
-  if (fromSeparator === toSeparator) {
-    return row;
-  }
-  return row.map((cell) => convertDecimalSeparator(cell, fromSeparator, toSeparator));
-}
+const IMPORT_GUARD_TIMEOUT_MS = 30000;
 
 /**
  * Recursively collects CSV files from a folder that match CSV_FILE_REGEX.
- * Uses searchFiles for efficient CSV filtering in each folder.
  * @param {Folder} rootFolder - The root folder to search
  * @param {string} regexPattern - The regex pattern to match file paths
  * @returns {Map} A Map of relative path -> file object
@@ -91,8 +69,20 @@ function getMatchingFiles(rootFolder, regexPattern) {
 /**
  * Entry point for the installable onOpen trigger.
  * Displays the progress dialog which then initiates the import.
+ * Skips if import was recently completed (to avoid double-trigger from locale restore).
  */
 function onOpenTrigger() {
+  const props = PropertiesService.getScriptProperties();
+  const lastImport = props.getProperty('lastImportTime');
+
+  if (lastImport) {
+    const elapsed = Date.now() - parseInt(lastImport, 10);
+    if (elapsed < IMPORT_GUARD_TIMEOUT_MS) {
+      props.deleteProperty('lastImportTime');
+      return;
+    }
+  }
+
   const html = HtmlService.createHtmlOutputFromFile('ProgressDialog')
     .setWidth(450)
     .setHeight(180);
@@ -100,8 +90,7 @@ function onOpenTrigger() {
 }
 
 /**
- * Clears import status. Called by dialog before starting import
- * to prevent stale status from previous runs being displayed.
+ * Clears import status. Called by dialog before starting import.
  */
 function clearImportStatus() {
   PropertiesService.getScriptProperties().deleteProperty('importStatus');
@@ -111,8 +100,10 @@ function clearImportStatus() {
  * Main sync logic. Called by the dialog via google.script.run.
  *
  * Uses atomic batch processing: all data changes (deletions + additions) are
- * collected in memory and written in a single setValues() call. This ensures
- * that formula recalculation is triggered only once, after all data is in place.
+ * collected in memory and written in a single setValues() call.
+ *
+ * If CSV_DECIMAL_SEPARATOR differs from the spreadsheet's locale, the locale
+ * is temporarily switched during import to ensure correct number parsing.
  */
 function importNewCSVFiles() {
   const props = PropertiesService.getScriptProperties();
@@ -121,10 +112,13 @@ function importNewCSVFiles() {
     props.setProperty('importStatus', JSON.stringify({ message, done }));
   }
 
+  let originalLocale = null;
+  let ss = null;
+
   try {
     updateStatus('Initializing...');
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
     const folder = DriveApp.getFolderById(CONFIG.CSV_FOLDER_ID);
     const { SHEET_START_ROW: startRow } = CONFIG;
@@ -165,10 +159,6 @@ function importNewCSVFiles() {
 
     const existingSet = new Set(filteredData.map((row) => row[0]).filter((name) => name));
 
-    const csvDecimal = CONFIG.CSV_DECIMAL_SEPARATOR;
-    const sheetDecimal = CONFIG.SHEET_DECIMAL_SEPARATOR;
-    const needsDecimalConversion = csvDecimal !== sheetDecimal;
-
     const newRows = [];
     let newFilesCount = 0;
     const importAllCols = !CONFIG.CSV_COLS_TO_INCLUDE
@@ -190,13 +180,9 @@ function importNewCSVFiles() {
 
       for (let i = CONFIG.CSV_START_ROW; i < csvData.length; i += 1) {
         const row = csvData[i];
-        let dataRow = importAllCols
+        const dataRow = importAllCols
           ? row
           : CONFIG.CSV_COLS_TO_INCLUDE.map((idx) => row[idx] ?? '');
-
-        if (needsDecimalConversion) {
-          dataRow = convertRowDecimals(dataRow, csvDecimal, sheetDecimal);
-        }
 
         newRows.push([fileName, ...dataRow]);
       }
@@ -209,6 +195,17 @@ function importNewCSVFiles() {
 
     if (hasChanges) {
       updateStatus('Writing data...');
+
+      // Temporarily change locale if CSV uses different decimal separator
+      const csvLocale = DECIMAL_LOCALES[CONFIG.CSV_DECIMAL_SEPARATOR];
+      originalLocale = ss.getSpreadsheetLocale();
+
+      if (csvLocale && originalLocale !== csvLocale) {
+        ss.setSpreadsheetLocale(csvLocale);
+        SpreadsheetApp.flush();
+      } else {
+        originalLocale = null;
+      }
 
       if (sheetLastRow >= startRow) {
         sheet.getRange(startRow, 1, sheetLastRow - startRow + 1, sheetLastCol).clearContent();
@@ -226,11 +223,27 @@ function importNewCSVFiles() {
         sheet.getRange(startRow, 1, normalizedData.length, maxCols)
           .setValues(normalizedData);
       }
+
+      // Restore original locale (may trigger page reload)
+      if (originalLocale) {
+        SpreadsheetApp.flush();
+        props.setProperty('lastImportTime', String(Date.now()));
+        ss.setSpreadsheetLocale(originalLocale);
+        originalLocale = null;
+      }
     }
 
     const summary = buildSummary(newFilesCount, newRows.length, deletedFilesCount, deletedRowsCount);
     updateStatus(summary, true);
   } catch (error) {
+    if (originalLocale && ss) {
+      try {
+        props.setProperty('lastImportTime', String(Date.now()));
+        ss.setSpreadsheetLocale(originalLocale);
+      } catch (restoreError) {
+        // Ignore restore errors
+      }
+    }
     updateStatus(`Error: ${error.message}`, true);
   }
 }
