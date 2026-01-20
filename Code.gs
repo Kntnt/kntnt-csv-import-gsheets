@@ -201,6 +201,8 @@ function importNewCSVFiles() {
       originalLocale = ss.getSpreadsheetLocale();
 
       if (csvLocale && originalLocale !== csvLocale) {
+        // Set guard BEFORE locale change - setSpreadsheetLocale may trigger page reload
+        props.setProperty('lastImportTime', String(Date.now()));
         ss.setSpreadsheetLocale(csvLocale);
         SpreadsheetApp.flush();
       } else {
@@ -227,6 +229,7 @@ function importNewCSVFiles() {
       // Restore original locale (may trigger page reload)
       if (originalLocale) {
         SpreadsheetApp.flush();
+        // Refresh guard timestamp before second locale change
         props.setProperty('lastImportTime', String(Date.now()));
         ss.setSpreadsheetLocale(originalLocale);
         originalLocale = null;
