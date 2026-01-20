@@ -50,6 +50,7 @@ const CONFIG = {
   SHEET_NAME: 'Data',
   SHEET_START_ROW: 2,
   SYNC_DELETIONS: true,
+  CSV_DECIMAL_SEPARATOR: '.',
 };
 ```
 
@@ -63,6 +64,7 @@ const CONFIG = {
 | `SHEET_NAME`      | Name of the sheet tab where data will be imported. Case-sensitive. |
 | `SHEET_START_ROW` | First row in the sheet where data will be written. Use this to preserve header rows or other content at the top. For example, set to `2` to keep row 1 for headers, or `7` to preserve rows 1–6. |
 | `SYNC_DELETIONS` | Set `true` to remove rows when their source CSV is deleted from the folder. |
+| `CSV_DECIMAL_SEPARATOR` | The decimal separator used in your CSV files: `'.'` (default) or `','`. The script automatically detects the spreadsheet's locale and converts decimal separators if needed. For example, if your CSV uses `.` (e.g., `3.14`) but the spreadsheet locale is Swedish (`sv_SE`), values will be converted to use `,` (e.g., `3,14`). |
 
 #### FILE_REGEX Examples
 
