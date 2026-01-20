@@ -13,53 +13,18 @@ const CONFIG = {
   SHEET_NAME: 'Data',
   SHEET_START_ROW: 2,
   SYNC_DELETIONS: true,
-  CSV_DECIMAL_SEPARATOR: '.',  // Decimal separator used in the CSV files ('.' or ',')
+  CSV_DECIMAL_SEPARATOR: ',',    // Decimal separator in CSV files ('.' or ',')
+  SHEET_DECIMAL_SEPARATOR: ',',  // Decimal separator expected by the sheet ('.' or ',')
 };
-
-/**
- * Locales that use comma as decimal separator.
- * Most of Europe, South America, and parts of Africa use comma.
- * This list covers the most common locales; unlisted locales default to period.
- */
-const COMMA_DECIMAL_LOCALES = new Set([
-  // Europe
-  'sv_SE', 'da_DK', 'nb_NO', 'nn_NO', 'fi_FI', 'de_DE', 'de_AT', 'de_CH',
-  'fr_FR', 'fr_BE', 'fr_CA', 'fr_CH', 'it_IT', 'it_CH', 'es_ES', 'es_AR',
-  'es_CL', 'es_CO', 'es_MX', 'es_VE', 'pt_PT', 'pt_BR', 'nl_NL', 'nl_BE',
-  'pl_PL', 'cs_CZ', 'sk_SK', 'hu_HU', 'ro_RO', 'bg_BG', 'hr_HR', 'sl_SI',
-  'sr_RS', 'uk_UA', 'ru_RU', 'el_GR', 'tr_TR', 'et_EE', 'lv_LV', 'lt_LT',
-  // South America
-  'es_PE', 'es_EC', 'es_BO', 'es_PY', 'es_UY',
-  // Africa
-  'af_ZA', 'fr_DZ', 'fr_MA', 'fr_TN',
-  // Other
-  'id_ID', 'vi_VN',
-]);
-
-/**
- * Gets the expected decimal separator based on the spreadsheet's locale.
- * Returns ',' for locales that use comma, '.' for all others.
- */
-function getSheetDecimalSeparator() {
-  const locale = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetLocale();
-  return COMMA_DECIMAL_LOCALES.has(locale) ? ',' : '.';
-}
 
 /**
  * Converts decimal separators in a value if needed.
  * Only converts values that look like numbers (integers or decimals).
- * @param {string} value - The value to potentially convert
- * @param {string} fromSeparator - The decimal separator in the source ('.' or ',')
- * @param {string} toSeparator - The decimal separator expected by the sheet ('.' or ',')
- * @returns {string} The value with converted decimal separator, or original if not a number
  */
 function convertDecimalSeparator(value, fromSeparator, toSeparator) {
   if (fromSeparator === toSeparator) return value;
   if (typeof value !== 'string') value = String(value);
 
-  // Pattern for a number: optional sign, digits, optional decimal part
-  // For period: -?[0-9]+(\.[0-9]+)?
-  // For comma: -?[0-9]+(,[0-9]+)?
   const pattern = fromSeparator === '.'
     ? /^-?[0-9]+(\.[0-9]+)?$/
     : /^-?[0-9]+(,[0-9]+)?$/;
@@ -72,10 +37,6 @@ function convertDecimalSeparator(value, fromSeparator, toSeparator) {
 
 /**
  * Converts all decimal separators in a row of data.
- * @param {Array} row - Array of cell values
- * @param {string} fromSeparator - The decimal separator in the source
- * @param {string} toSeparator - The decimal separator expected by the sheet
- * @returns {Array} Row with converted values
  */
 function convertRowDecimals(row, fromSeparator, toSeparator) {
   if (fromSeparator === toSeparator) return row;
@@ -203,8 +164,8 @@ function importNewCSVFiles() {
     const existingSet = new Set(filteredData.map(row => row[0]).filter(name => name));
 
     // Determine decimal separator conversion needs
-    const csvDecimal = CONFIG.CSV_DECIMAL_SEPARATOR || '.';
-    const sheetDecimal = getSheetDecimalSeparator();
+    const csvDecimal = CONFIG.CSV_DECIMAL_SEPARATOR || ',';
+    const sheetDecimal = CONFIG.SHEET_DECIMAL_SEPARATOR || ',';
     const needsDecimalConversion = csvDecimal !== sheetDecimal;
 
     // Import new files and collect rows in memory
