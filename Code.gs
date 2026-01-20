@@ -67,32 +67,29 @@ function getMatchingFiles(rootFolder, regexPattern) {
  * Displays the progress dialog which then initiates the import.
  *
  * Handles three scenarios:
- * 1. Import in progress (locale change triggered reload) - skip, let import continue
+ * 1. Import in progress (locale change triggered reload) - show dialog to display progress/result
  * 2. Import done but user closed via X - restore locale, then show dialog on next reload
  * 3. Normal open - show dialog
  */
 function onOpenTrigger() {
   const props = PropertiesService.getScriptProperties();
 
-  // If import is in progress, skip - the import will continue and finish
-  // (this happens when locale change triggers a page reload mid-import)
-  if (props.getProperty(IMPORT_IN_PROGRESS_KEY)) {
-    return;
-  }
-
-  // Check if locale needs to be restored from a previous import
+  // If import is NOT in progress, check if locale needs to be restored
   // (happens if user closed the dialog via X icon instead of Close button)
-  const savedLocale = props.getProperty(ORIGINAL_LOCALE_KEY);
-  if (savedLocale) {
-    props.deleteProperty(ORIGINAL_LOCALE_KEY);
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    if (ss.getSpreadsheetLocale() !== savedLocale) {
-      // Restore locale - this will trigger a page reload and new onOpenTrigger
-      ss.setSpreadsheetLocale(savedLocale);
-      return;
+  if (!props.getProperty(IMPORT_IN_PROGRESS_KEY)) {
+    const savedLocale = props.getProperty(ORIGINAL_LOCALE_KEY);
+    if (savedLocale) {
+      props.deleteProperty(ORIGINAL_LOCALE_KEY);
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      if (ss.getSpreadsheetLocale() !== savedLocale) {
+        // Restore locale - this will trigger a page reload and new onOpenTrigger
+        ss.setSpreadsheetLocale(savedLocale);
+        return;
+      }
     }
   }
 
+  // Always show dialog - it will poll for status from ongoing or new import
   const html = HtmlService.createHtmlOutputFromFile('ProgressDialog')
     .setWidth(450)
     .setHeight(180);
@@ -101,9 +98,13 @@ function onOpenTrigger() {
 
 /**
  * Clears import status. Called by dialog before starting import.
+ * Does NOT clear if import is in progress (to preserve status for polling).
  */
 function clearImportStatus() {
-  PropertiesService.getScriptProperties().deleteProperty('importStatus');
+  const props = PropertiesService.getScriptProperties();
+  if (!props.getProperty(IMPORT_IN_PROGRESS_KEY)) {
+    props.deleteProperty('importStatus');
+  }
 }
 
 /**
@@ -119,6 +120,12 @@ function clearImportStatus() {
 function importNewCSVFiles() {
   const props = PropertiesService.getScriptProperties();
 
+  // If import is already in progress, don't start another one
+  // The dialog will poll and get status from the ongoing import
+  if (props.getProperty(IMPORT_IN_PROGRESS_KEY)) {
+    return;
+  }
+
   function updateStatus(message, done = false) {
     props.setProperty('importStatus', JSON.stringify({ message, done }));
   }
@@ -131,7 +138,7 @@ function importNewCSVFiles() {
     updateStatus('Initializing...');
 
     // Mark import as in progress BEFORE any locale change
-    // This prevents onOpenTrigger from showing dialog again if page reloads
+    // This prevents starting duplicate imports if page reloads
     props.setProperty(IMPORT_IN_PROGRESS_KEY, 'true');
 
     ss = SpreadsheetApp.getActiveSpreadsheet();
