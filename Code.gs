@@ -86,9 +86,14 @@ function onOpenTrigger() {
   }
 
   // Show dialog - either after locale switch or if no switch was needed
-  const html = HtmlService.createHtmlOutputFromFile('ProgressDialog')
+  const template = HtmlService.createTemplateFromFile('ProgressDialog');
+  template.localeChanged = savedLocale ? true : false;
+  template.originalLocale = savedLocale || '';
+  template.currentLocale = CONFIG.CSV_LOCALE;
+
+  const html = template.evaluate()
     .setWidth(450)
-    .setHeight(250);
+    .setHeight(savedLocale ? 250 : 180);
   SpreadsheetApp.getUi().showModalDialog(html, 'CSV Import');
 }
 
@@ -291,17 +296,3 @@ function clearImportStatus() {
   PropertiesService.getScriptProperties().deleteProperty('importStatus');
 }
 
-/**
- * Returns locale change info for the dialog to display a warning.
- * Returns null if no locale change was made.
- */
-function getLocaleChangeInfo() {
-  const savedLocale = PropertiesService.getScriptProperties().getProperty(ORIGINAL_LOCALE_KEY);
-  if (savedLocale) {
-    return {
-      originalLocale: savedLocale,
-      currentLocale: CONFIG.CSV_LOCALE
-    };
-  }
-  return null;
-}

@@ -36,7 +36,6 @@
         word-break: break-word;
       }
       .warning {
-        display: none;
         margin-top: 16px;
         padding: 12px;
         background: #fef7e0;
@@ -46,7 +45,6 @@
         line-height: 1.4;
         color: #594300;
       }
-      .warning.visible { display: block; }
       .button-container {
         margin-top: 20px;
         text-align: right;
@@ -72,7 +70,13 @@
       <div id="spinner" class="spinner"></div>
       <div id="status">Connecting...</div>
     </div>
-    <div id="warning" class="warning"></div>
+    <? if (localeChanged) { ?>
+    <div class="warning">
+      <strong>OBS!</strong> Locale har ändrats från <?= originalLocale ?> till <?= currentLocale ?> för att importera CSV-filer korrekt.
+      Klicka på <strong>Close</strong>-knappen när importen är klar för att återställa locale automatiskt.
+      Om du stänger med X måste du manuellt ändra tillbaka locale.
+    </div>
+    <? } ?>
     <div class="button-container">
       <button id="closeBtn">Close</button>
     </div>
@@ -82,7 +86,6 @@
         const statusEl = document.getElementById('status');
         const spinnerEl = document.getElementById('spinner');
         const closeBtn = document.getElementById('closeBtn');
-        const warningEl = document.getElementById('warning');
 
         // Backup: restore locale if user closes via X icon
         try {
@@ -126,21 +129,6 @@
             })
             .getImportStatus();
         }
-
-        // Check if locale was changed and show warning
-        google.script.run
-          .withSuccessHandler(function(localeInfo) {
-            if (localeInfo) {
-              warningEl.innerHTML =
-                '<strong>OBS!</strong> Locale har ändrats från ' +
-                localeInfo.originalLocale + ' till ' + localeInfo.currentLocale +
-                ' för att importera CSV-filer korrekt. ' +
-                'Klicka på <strong>Close</strong>-knappen när importen är klar för att återställa locale automatiskt. ' +
-                'Om du stänger med X måste du manuellt ändra tillbaka locale.';
-              warningEl.classList.add('visible');
-            }
-          })
-          .getLocaleChangeInfo();
 
         // Clear old status, start import, then poll
         google.script.run
