@@ -86,6 +86,12 @@
               }
             })
             .withFailureHandler(function(err) {
+              // If err.message is undefined, it's likely a disconnect due to page reload
+              // The result will be shown in a toast after reload, so just close quietly
+              if (!err.message) {
+                google.script.host.close();
+                return;
+              }
               statusEl.textContent = 'Error: ' + err.message;
               spinnerEl.classList.add('hidden');
               closeBtn.classList.add('visible');

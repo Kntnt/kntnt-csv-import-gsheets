@@ -78,8 +78,20 @@ function onOpenTrigger() {
   if (lastImport) {
     const elapsed = Date.now() - parseInt(lastImport, 10);
     if (elapsed < IMPORT_GUARD_TIMEOUT_MS) {
+      // Import was recently completed - show result in toast since dialog
+      // can't survive the page reload triggered by locale change
+      const status = props.getProperty('importStatus');
+      if (status) {
+        try {
+          const result = JSON.parse(status);
+          if (result.done && result.message) {
+            SpreadsheetApp.getActiveSpreadsheet().toast(result.message, 'CSV Import', 10);
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
       // Don't delete the property here - multiple onOpenTrigger calls may race
-      // Let the property expire naturally based on timestamp
       return;
     }
     // Only delete if guard has expired (older than timeout)
