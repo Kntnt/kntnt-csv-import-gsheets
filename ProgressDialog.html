@@ -69,25 +69,32 @@
               }
             })
             .withFailureHandler(function(err) {
-              statusEl.textContent = 'Error: ' + (err.message || 'Connection lost');
+              statusEl.textContent = 'Poll error: ' + (err.message || 'Connection lost');
               spinnerEl.classList.add('hidden');
             })
             .getImportStatus();
         }
 
-        // Clear old status, start import, then poll for updates
+        // Step 1: Clear old status
+        statusEl.textContent = 'Clearing old status...';
         google.script.run
           .withSuccessHandler(function() {
+            // Step 2: Start import
+            statusEl.textContent = 'Starting import...';
             google.script.run
               .withFailureHandler(function(err) {
-                statusEl.textContent = 'Failed to start import: ' + (err.message || 'Unknown error');
+                statusEl.textContent = 'Import error: ' + (err.message || 'Unknown error');
                 spinnerEl.classList.add('hidden');
               })
               .importNewCSVFiles();
-            setTimeout(poll, 300);
+            // Step 3: Start polling
+            setTimeout(function() {
+              statusEl.textContent = 'Waiting for status...';
+              poll();
+            }, 500);
           })
           .withFailureHandler(function(err) {
-            statusEl.textContent = 'Failed to initialize: ' + (err.message || 'Unknown error');
+            statusEl.textContent = 'Clear error: ' + (err.message || 'Unknown error');
             spinnerEl.classList.add('hidden');
           })
           .clearImportStatus();
