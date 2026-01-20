@@ -6,7 +6,7 @@
 
 const CONFIG = {
   FOLDER_ID: '1ZSMSVBw9NswwvIAhUvqa081RfQ2RNiM8',
-  FILE_PATTERN: '*.csv',
+  FILE_REGEX: '\\.csv$',
   DELIMITER: ',',
   SKIP_ROWS: 1,
   COLS_TO_INCLUDE: [0, 1, 3, 4, 9, 11],
@@ -16,61 +16,23 @@ const CONFIG = {
 };
 
 /**
- * Converts a glob pattern to a regular expression.
- * Supports: * (any chars except /), ** (any chars including /), ? (single char)
- */
-function globToRegex(pattern) {
-  let regex = '';
-  let i = 0;
-  while (i < pattern.length) {
-    const char = pattern[i];
-    if (char === '*') {
-      if (pattern[i + 1] === '*') {
-        // ** matches any path (including /)
-        regex += '.*';
-        i += 2;
-        // Skip trailing / after **
-        if (pattern[i] === '/') i++;
-      } else {
-        // * matches any chars except /
-        regex += '[^/]*';
-        i++;
-      }
-    } else if (char === '?') {
-      regex += '[^/]';
-      i++;
-    } else if (char === '/') {
-      regex += '\\/';
-      i++;
-    } else if ('.^$+{}[]|()\\'.includes(char)) {
-      regex += '\\' + char;
-      i++;
-    } else {
-      regex += char;
-      i++;
-    }
-  }
-  return new RegExp('^' + regex + '$', 'i');
-}
-
-/**
- * Recursively collects files from a folder that match the given glob pattern.
+ * Recursively collects CSV files from a folder that match FILE_REGEX.
+ * Uses searchFiles for efficient CSV filtering in each folder.
  * Returns a Map of relative path -> file object.
  */
-function getFilesMatchingPattern(rootFolder, pattern) {
-  const regex = globToRegex(pattern);
+function getMatchingFiles(rootFolder, regexPattern) {
+  const regex = new RegExp(regexPattern, 'i');
   const result = new Map();
 
   function traverse(folder, pathPrefix) {
-    // Get all files in current folder
-    const files = folder.getFiles();
+    // Use searchFiles for efficient CSV filtering
+    const files = folder.searchFiles("mimeType = 'text/csv'");
     while (files.hasNext()) {
       const file = files.next();
       const fileName = file.getName();
       const relativePath = pathPrefix ? pathPrefix + '/' + fileName : fileName;
 
-      // Only include CSV files that match the pattern
-      if (file.getMimeType() === MimeType.CSV && regex.test(relativePath)) {
+      if (regex.test(relativePath)) {
         result.set(relativePath, file);
       }
     }
@@ -130,9 +92,9 @@ function importNewCSVFiles() {
     const folder = DriveApp.getFolderById(CONFIG.FOLDER_ID);
     const startRow = CONFIG.SHEET_START_ROW;
 
-    // Build map of CSV files matching the pattern (supports recursive search)
+    // Build map of CSV files matching the regex (supports recursive search)
     updateStatus('Scanning for files...');
-    const folderFiles = getFilesMatchingPattern(folder, CONFIG.FILE_PATTERN);
+    const folderFiles = getMatchingFiles(folder, CONFIG.FILE_REGEX);
 
     // Determine the data region (from startRow to actual last row of content)
     const sheetLastRow = sheet.getLastRow();
