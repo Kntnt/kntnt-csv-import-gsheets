@@ -60,7 +60,7 @@
       <div id="status">Starting import...</div>
     </div>
     <div class="button-container">
-      <button id="closeBtn" onclick="google.script.host.close()">Close</button>
+      <button id="closeBtn">Close</button>
     </div>
 
     <script>
@@ -68,6 +68,20 @@
         const statusEl = document.getElementById('status');
         const spinnerEl = document.getElementById('spinner');
         const closeBtn = document.getElementById('closeBtn');
+
+        // Close button restores locale (which triggers page reload) then closes dialog
+        closeBtn.addEventListener('click', function() {
+          closeBtn.disabled = true;
+          closeBtn.textContent = 'Closing...';
+          google.script.run
+            .withSuccessHandler(function() {
+              google.script.host.close();
+            })
+            .withFailureHandler(function() {
+              google.script.host.close();
+            })
+            .restoreLocale();
+        });
 
         function poll() {
           google.script.run
@@ -86,13 +100,7 @@
               }
             })
             .withFailureHandler(function(err) {
-              // If err.message is undefined, it's likely a disconnect due to page reload
-              // The result will be shown in a toast after reload, so just close quietly
-              if (!err.message) {
-                google.script.host.close();
-                return;
-              }
-              statusEl.textContent = 'Error: ' + err.message;
+              statusEl.textContent = 'Error: ' + (err.message || 'Connection lost');
               spinnerEl.classList.add('hidden');
               closeBtn.classList.add('visible');
             })
