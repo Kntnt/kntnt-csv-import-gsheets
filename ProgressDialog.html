@@ -26,32 +26,15 @@
         flex-shrink: 0;
       }
       .spinner.hidden { display: none; }
-      @keyframes spin { 
+      @keyframes spin {
         0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); } 
+        100% { transform: rotate(360deg); }
       }
       #status {
         font-size: 14px;
         line-height: 1.5;
         word-break: break-word;
       }
-      .button-container {
-        margin-top: 20px;
-        text-align: right;
-      }
-      button {
-        background: #1a73e8;
-        color: white;
-        border: none;
-        padding: 10px 24px;
-        border-radius: 4px;
-        font-size: 14px;
-        font-weight: 500;
-        cursor: pointer;
-        display: none;
-      }
-      button:hover { background: #1557b0; }
-      button.visible { display: inline-block; }
     </style>
   </head>
   <body>
@@ -59,28 +42,15 @@
       <div id="spinner" class="spinner"></div>
       <div id="status">Starting import...</div>
     </div>
-    <div class="button-container">
-      <button id="closeBtn">Close</button>
-    </div>
 
     <script>
       (function() {
         const statusEl = document.getElementById('status');
         const spinnerEl = document.getElementById('spinner');
-        const closeBtn = document.getElementById('closeBtn');
 
-        // Close button restores locale (which triggers page reload) then closes dialog
-        closeBtn.addEventListener('click', function() {
-          closeBtn.disabled = true;
-          closeBtn.textContent = 'Closing...';
-          google.script.run
-            .withSuccessHandler(function() {
-              google.script.host.close();
-            })
-            .withFailureHandler(function() {
-              google.script.host.close();
-            })
-            .restoreLocale();
+        // When dialog closes (via X icon), restore the original locale
+        google.script.host.setCloseHandler(function() {
+          google.script.run.restoreLocale();
         });
 
         function poll() {
@@ -94,7 +64,6 @@
               statusEl.textContent = result.message;
               if (result.done) {
                 spinnerEl.classList.add('hidden');
-                closeBtn.classList.add('visible');
               } else {
                 setTimeout(poll, 400);
               }
@@ -102,12 +71,11 @@
             .withFailureHandler(function(err) {
               statusEl.textContent = 'Error: ' + (err.message || 'Connection lost');
               spinnerEl.classList.add('hidden');
-              closeBtn.classList.add('visible');
             })
             .getImportStatus();
         }
 
-        // Clear old status first (synchronously via callback), then start import, then poll
+        // Clear old status, start import, then poll for updates
         google.script.run
           .withSuccessHandler(function() {
             google.script.run.importNewCSVFiles();

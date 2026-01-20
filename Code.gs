@@ -16,22 +16,11 @@ const CONFIG = {
   SYNC_DELETIONS: true,
 };
 
-/**
- * Property key for storing original locale during import.
- */
+/** Property key for storing original locale during import. */
 const ORIGINAL_LOCALE_KEY = 'originalLocale';
 
 /**
- * Property key for indicating an import is in progress.
- * Used to prevent showing dialog again when locale change triggers reload.
- */
-const IMPORT_IN_PROGRESS_KEY = 'importInProgress';
-
-/**
  * Recursively collects CSV files from a folder that match CSV_FILE_REGEX.
- * @param {Folder} rootFolder - The root folder to search
- * @param {string} regexPattern - The regex pattern to match file paths
- * @returns {Map} A Map of relative path -> file object
  */
 function getMatchingFiles(rootFolder, regexPattern) {
   const regex = new RegExp(regexPattern, 'i');
@@ -43,7 +32,6 @@ function getMatchingFiles(rootFolder, regexPattern) {
       const file = files.next();
       const fileName = file.getName();
       const relativePath = pathPrefix ? `${pathPrefix}/${fileName}` : fileName;
-
       if (regex.test(relativePath)) {
         result.set(relativePath, file);
       }
@@ -64,32 +52,25 @@ function getMatchingFiles(rootFolder, regexPattern) {
 
 /**
  * Entry point for the installable onOpen trigger.
- * Displays the progress dialog which then initiates the import.
  *
- * Handles three scenarios:
- * 1. Import in progress (locale change triggered reload) - show dialog to display progress/result
- * 2. Import done but user closed via X - restore locale, then show dialog on next reload
- * 3. Normal open - show dialog
+ * Flow:
+ * 1. If locale needs to change: save original, change locale, return (page reloads)
+ * 2. After reload (or if no change needed): show dialog
  */
 function onOpenTrigger() {
   const props = PropertiesService.getScriptProperties();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const currentLocale = ss.getSpreadsheetLocale();
 
-  // If import is NOT in progress, check if locale needs to be restored
-  // (happens if user closed the dialog via X icon instead of Close button)
-  if (!props.getProperty(IMPORT_IN_PROGRESS_KEY)) {
-    const savedLocale = props.getProperty(ORIGINAL_LOCALE_KEY);
-    if (savedLocale) {
-      props.deleteProperty(ORIGINAL_LOCALE_KEY);
-      const ss = SpreadsheetApp.getActiveSpreadsheet();
-      if (ss.getSpreadsheetLocale() !== savedLocale) {
-        // Restore locale - this will trigger a page reload and new onOpenTrigger
-        ss.setSpreadsheetLocale(savedLocale);
-        return;
-      }
-    }
+  // If we haven't switched to CSV locale yet, do it now
+  // This triggers a page reload, after which we'll show the dialog
+  if (currentLocale !== CONFIG.CSV_LOCALE && !props.getProperty(ORIGINAL_LOCALE_KEY)) {
+    props.setProperty(ORIGINAL_LOCALE_KEY, currentLocale);
+    ss.setSpreadsheetLocale(CONFIG.CSV_LOCALE);
+    return; // Page will reload
   }
 
-  // Always show dialog - it will poll for status from ongoing or new import
+  // Show dialog - either after locale switch or if no switch was needed
   const html = HtmlService.createHtmlOutputFromFile('ProgressDialog')
     .setWidth(450)
     .setHeight(180);
@@ -97,65 +78,43 @@ function onOpenTrigger() {
 }
 
 /**
- * Clears import status. Called by dialog before starting import.
- * Does NOT clear if import is in progress (to preserve status for polling).
+ * Restores the original locale after import completes.
+ * Called by the dialog's closeHandler when user closes the dialog.
  */
-function clearImportStatus() {
+function restoreLocale() {
   const props = PropertiesService.getScriptProperties();
-  if (!props.getProperty(IMPORT_IN_PROGRESS_KEY)) {
-    props.deleteProperty('importStatus');
+  const savedLocale = props.getProperty(ORIGINAL_LOCALE_KEY);
+
+  if (savedLocale) {
+    props.deleteProperty(ORIGINAL_LOCALE_KEY);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (ss.getSpreadsheetLocale() !== savedLocale) {
+      ss.setSpreadsheetLocale(savedLocale);
+    }
   }
 }
 
 /**
  * Main sync logic. Called by the dialog via google.script.run.
- *
- * Uses atomic batch processing: all data changes (deletions + additions) are
- * collected in memory and written in a single setValues() call.
- *
- * Always switches to CSV_LOCALE during import to ensure correct parsing of
- * numbers, dates, and formulas. The original locale is restored when the
- * user clicks the Close button (via restoreLocale).
  */
 function importNewCSVFiles() {
   const props = PropertiesService.getScriptProperties();
-
-  // If import is already in progress, don't start another one
-  // The dialog will poll and get status from the ongoing import
-  if (props.getProperty(IMPORT_IN_PROGRESS_KEY)) {
-    return;
-  }
 
   function updateStatus(message, done = false) {
     props.setProperty('importStatus', JSON.stringify({ message, done }));
   }
 
-  let ss = null;
   let currentStep = 'initializing';
   let currentFile = null;
 
   try {
     updateStatus('Initializing...');
 
-    // Mark import as in progress BEFORE any locale change
-    // This prevents starting duplicate imports if page reloads
-    props.setProperty(IMPORT_IN_PROGRESS_KEY, 'true');
-
-    ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
     currentStep = 'accessing folder';
     const folder = DriveApp.getFolderById(CONFIG.CSV_FOLDER_ID);
     const { SHEET_START_ROW: startRow } = CONFIG;
-
-    // Always switch to CSV locale for correct parsing
-    // Save original locale so it can be restored when dialog closes
-    currentStep = 'switching locale';
-    const originalLocale = ss.getSpreadsheetLocale();
-    if (originalLocale !== CONFIG.CSV_LOCALE) {
-      props.setProperty(ORIGINAL_LOCALE_KEY, originalLocale);
-      ss.setSpreadsheetLocale(CONFIG.CSV_LOCALE);
-      SpreadsheetApp.flush();
-    }
 
     currentStep = 'scanning for files';
     updateStatus('Scanning for files...');
@@ -257,49 +216,17 @@ function importNewCSVFiles() {
 
     const summary = buildSummary(newFilesCount, newRows.length, deletedFilesCount, deletedRowsCount);
     updateStatus(summary, true);
-
-    // Import complete - clear the in-progress flag
-    props.deleteProperty(IMPORT_IN_PROGRESS_KEY);
   } catch (error) {
     const errorMsg = error.message || 'Unknown error';
     const context = currentFile
       ? `Error while ${currentStep} (${currentFile}): ${errorMsg}`
       : `Error while ${currentStep}: ${errorMsg}`;
     updateStatus(context, true);
-
-    // Import failed - clear the in-progress flag
-    props.deleteProperty(IMPORT_IN_PROGRESS_KEY);
-  }
-}
-
-/**
- * Restores the original locale after import completes.
- * Called by the dialog when the user clicks the Close button.
- * This triggers a page reload which closes the dialog.
- */
-function restoreLocale() {
-  const props = PropertiesService.getScriptProperties();
-
-  // Clear in-progress flag (should already be cleared, but ensure it)
-  props.deleteProperty(IMPORT_IN_PROGRESS_KEY);
-
-  const savedLocale = props.getProperty(ORIGINAL_LOCALE_KEY);
-  if (savedLocale) {
-    props.deleteProperty(ORIGINAL_LOCALE_KEY);
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    if (ss.getSpreadsheetLocale() !== savedLocale) {
-      ss.setSpreadsheetLocale(savedLocale);
-    }
   }
 }
 
 /**
  * Builds a human-readable summary of the sync operation.
- * @param {number} newFiles - Number of new files imported
- * @param {number} newRows - Number of new rows added
- * @param {number} deletedFiles - Number of files deleted
- * @param {number} deletedRows - Number of rows removed
- * @returns {string} A summary message
  */
 function buildSummary(newFiles, newRows, deletedFiles, deletedRows) {
   const parts = [];
@@ -321,9 +248,15 @@ function buildSummary(newFiles, newRows, deletedFiles, deletedRows) {
 
 /**
  * Returns current import status. Polled by the dialog UI.
- * @returns {Object|null} The current status object or null
  */
 function getImportStatus() {
   const status = PropertiesService.getScriptProperties().getProperty('importStatus');
   return status ? JSON.parse(status) : null;
+}
+
+/**
+ * Clears import status. Called by dialog before starting import.
+ */
+function clearImportStatus() {
+  PropertiesService.getScriptProperties().deleteProperty('importStatus');
 }
