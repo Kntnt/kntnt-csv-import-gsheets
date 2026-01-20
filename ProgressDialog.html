@@ -48,10 +48,18 @@
         const statusEl = document.getElementById('status');
         const spinnerEl = document.getElementById('spinner');
 
+        // Confirm JS is running immediately
+        statusEl.textContent = 'JS started...';
+
         // When dialog closes (via X icon), restore the original locale
-        google.script.host.setCloseHandler(function() {
-          google.script.run.restoreLocale();
-        });
+        try {
+          google.script.host.setCloseHandler(function() {
+            google.script.run.restoreLocale();
+          });
+          statusEl.textContent = 'CloseHandler set...';
+        } catch (e) {
+          statusEl.textContent = 'CloseHandler error: ' + e.message;
+        }
 
         function poll() {
           google.script.run
