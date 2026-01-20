@@ -13,8 +13,8 @@ const CONFIG = {
   SHEET_NAME: 'Data',
   SHEET_START_ROW: 2,
   SYNC_DELETIONS: true,
-  CSV_DECIMAL_SEPARATOR: ',',    // Decimal separator in CSV files ('.' or ',')
-  SHEET_DECIMAL_SEPARATOR: ',',  // Decimal separator expected by the sheet ('.' or ',')
+  CSV_DECIMAL_SEPARATOR: ',',
+  SHEET_DECIMAL_SEPARATOR: ',',
 };
 
 /**
@@ -22,7 +22,6 @@ const CONFIG = {
  * Only converts values that look like numbers (integers or decimals).
  */
 function convertDecimalSeparator(value, fromSeparator, toSeparator) {
-  if (fromSeparator === toSeparator) return value;
   if (typeof value !== 'string') value = String(value);
 
   const pattern = fromSeparator === '.'
@@ -164,8 +163,8 @@ function importNewCSVFiles() {
     const existingSet = new Set(filteredData.map(row => row[0]).filter(name => name));
 
     // Determine decimal separator conversion needs
-    const csvDecimal = CONFIG.CSV_DECIMAL_SEPARATOR || ',';
-    const sheetDecimal = CONFIG.SHEET_DECIMAL_SEPARATOR || ',';
+    const csvDecimal = CONFIG.CSV_DECIMAL_SEPARATOR;
+    const sheetDecimal = CONFIG.SHEET_DECIMAL_SEPARATOR;
     const needsDecimalConversion = csvDecimal !== sheetDecimal;
 
     // Import new files and collect rows in memory
