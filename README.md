@@ -5,6 +5,7 @@ A Google Apps Script that automatically syncs CSV files from a Google Drive fold
 ## Features
 
 - **Auto-import on open** – Imports new CSV files every time you open the spreadsheet
+- **Recursive folder search** – Searches subfolders with regex pattern filtering
 - **Progress dialog** – Shows which file is being processed in real-time
 - **Duplicate detection** – Skips files that have already been imported
 - **Sync deletions** – Optionally removes rows when source CSV files are deleted
@@ -42,11 +43,12 @@ Edit the `CONFIG` object at the top of `Code.gs`:
 ```javascript
 const CONFIG = {
   FOLDER_ID: 'your-folder-id-here',
+  FILE_REGEX: '\\.csv$',
   DELIMITER: ',',
   SKIP_ROWS: 1,
   COLS_TO_INCLUDE: [0, 1, 3, 4, 9, 11],
   SHEET_NAME: 'Data',
-  SHEET_START_ROW: 1
+  SHEET_START_ROW: 2,
   SYNC_DELETIONS: true,
 };
 ```
@@ -54,6 +56,7 @@ const CONFIG = {
 | Option | Description |
 |--------|-------------|
 | `FOLDER_ID` | Google Drive folder ID containing your CSV files. Find it in the folder's URL: `drive.google.com/drive/folders/[FOLDER_ID]` |
+| `FILE_REGEX` | Regex pattern to filter which CSV files to import. Matches against the relative path from the root folder. See examples below. |
 | `DELIMITER` | Character separating values in your CSV files: `','`, `';'`, or `'\t'` |
 | `SKIP_ROWS`       | Number of rows to skip at the beginning of each CSV file. Set to `1` to skip a header row, `0` to import all rows. |
 | `COLS_TO_INCLUDE` | Zero-indexed array of columns to import (0 = A, 1 = B, etc). Set to `null` or `[]` to import all columns. |
@@ -61,7 +64,19 @@ const CONFIG = {
 | `SHEET_START_ROW` | First row in the sheet where data will be written. Use this to preserve header rows or other content at the top. For example, set to `2` to keep row 1 for headers, or `7` to preserve rows 1–6. |
 | `SYNC_DELETIONS` | Set `true` to remove rows when their source CSV is deleted from the folder. |
 
-> **Note:** Column A in your sheet is reserved for the source filename. Your CSV data starts in column B.
+#### FILE_REGEX Examples
+
+| Pattern | Description |
+|---------|-------------|
+| `\\.csv$` | All CSV files in all folders (default) |
+| `^[^/]*\\.csv$` | Only CSV files in the root folder (no subfolders) |
+| `Diagram\\.csv$` | Files ending with "Diagram.csv" |
+| `^[^/]+/Diagram\\.csv$` | Files named exactly "Diagram.csv" in immediate subfolders only |
+| `/Reports/` | Files in any folder named "Reports" |
+| `^2024/` | Files in subfolders starting with "2024" |
+| `^Project1/.*\\.csv$` | All CSV files under the "Project1" folder |
+
+> **Note:** Column A in your sheet is reserved for the source file path (relative to the root folder, e.g., `Reports/2024/data.csv`). Your CSV data starts in column B.
 
 ### 4. Save the Project
 
@@ -101,7 +116,7 @@ The import dialog should appear automatically. Note that it may take a few secon
 1. On spreadsheet open, the trigger displays a modal dialog
 2. The dialog clears any stale status, then starts the import process
 3. The dialog polls for status updates while import runs
-4. The script reads all CSV filenames from the configured Drive folder
+4. The script recursively scans the configured Drive folder and subfolders for CSV files matching `FILE_REGEX`
 5. Existing data is loaded into memory
 6. If `SYNC_DELETIONS` is enabled, rows from deleted files are filtered out (in memory)
 7. New CSV files are parsed and added to the data (in memory)

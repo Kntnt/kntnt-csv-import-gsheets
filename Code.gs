@@ -6,6 +6,7 @@
 
 const CONFIG = {
   FOLDER_ID: '1ZSMSVBw9NswwvIAhUvqa081RfQ2RNiM8',
+  FILE_REGEX: '\\.csv$',
   DELIMITER: ',',
   SKIP_ROWS: 1,
   COLS_TO_INCLUDE: [0, 1, 3, 4, 9, 11],
@@ -13,6 +14,42 @@ const CONFIG = {
   SHEET_START_ROW: 2,
   SYNC_DELETIONS: true,
 };
+
+/**
+ * Recursively collects CSV files from a folder that match FILE_REGEX.
+ * Uses searchFiles for efficient CSV filtering in each folder.
+ * Returns a Map of relative path -> file object.
+ */
+function getMatchingFiles(rootFolder, regexPattern) {
+  const regex = new RegExp(regexPattern, 'i');
+  const result = new Map();
+
+  function traverse(folder, pathPrefix) {
+    // Use searchFiles for efficient CSV filtering
+    const files = folder.searchFiles("mimeType = 'text/csv'");
+    while (files.hasNext()) {
+      const file = files.next();
+      const fileName = file.getName();
+      const relativePath = pathPrefix ? pathPrefix + '/' + fileName : fileName;
+
+      if (regex.test(relativePath)) {
+        result.set(relativePath, file);
+      }
+    }
+
+    // Recurse into subfolders
+    const subfolders = folder.getFolders();
+    while (subfolders.hasNext()) {
+      const subfolder = subfolders.next();
+      const subfolderName = subfolder.getName();
+      const newPrefix = pathPrefix ? pathPrefix + '/' + subfolderName : subfolderName;
+      traverse(subfolder, newPrefix);
+    }
+  }
+
+  traverse(rootFolder, '');
+  return result;
+}
 
 /**
  * Entry point for the installable onOpen trigger.
@@ -55,13 +92,9 @@ function importNewCSVFiles() {
     const folder = DriveApp.getFolderById(CONFIG.FOLDER_ID);
     const startRow = CONFIG.SHEET_START_ROW;
 
-    // Build map of CSV files currently in the Drive folder
-    const files = folder.getFilesByType(MimeType.CSV);
-    const folderFiles = new Map();
-    while (files.hasNext()) {
-      const file = files.next();
-      folderFiles.set(file.getName(), file);
-    }
+    // Build map of CSV files matching the regex (supports recursive search)
+    updateStatus('Scanning for files...');
+    const folderFiles = getMatchingFiles(folder, CONFIG.FILE_REGEX);
 
     // Determine the data region (from startRow to actual last row of content)
     const sheetLastRow = sheet.getLastRow();
