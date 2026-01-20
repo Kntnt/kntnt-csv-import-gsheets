@@ -13,7 +13,34 @@ const CONFIG = {
   SHEET_NAME: 'Data',
   SHEET_START_ROW: 2,
   SYNC_DELETIONS: true,
+  CSV_DECIMAL_SEPARATOR: ',',
+  SHEET_DECIMAL_SEPARATOR: ',',
 };
+
+/**
+ * Converts decimal separators in a value if needed.
+ * Only converts values that look like numbers (integers or decimals).
+ */
+function convertDecimalSeparator(value, fromSeparator, toSeparator) {
+  if (typeof value !== 'string') value = String(value);
+
+  const pattern = fromSeparator === '.'
+    ? /^-?[0-9]+(\.[0-9]+)?$/
+    : /^-?[0-9]+(,[0-9]+)?$/;
+
+  if (pattern.test(value.trim())) {
+    return value.replace(fromSeparator, toSeparator);
+  }
+  return value;
+}
+
+/**
+ * Converts all decimal separators in a row of data.
+ */
+function convertRowDecimals(row, fromSeparator, toSeparator) {
+  if (fromSeparator === toSeparator) return row;
+  return row.map(cell => convertDecimalSeparator(cell, fromSeparator, toSeparator));
+}
 
 /**
  * Recursively collects CSV files from a folder that match FILE_REGEX.
@@ -135,6 +162,11 @@ function importNewCSVFiles() {
     // Build set of already imported filenames for duplicate detection
     const existingSet = new Set(filteredData.map(row => row[0]).filter(name => name));
 
+    // Determine decimal separator conversion needs
+    const csvDecimal = CONFIG.CSV_DECIMAL_SEPARATOR;
+    const sheetDecimal = CONFIG.SHEET_DECIMAL_SEPARATOR;
+    const needsDecimalConversion = csvDecimal !== sheetDecimal;
+
     // Import new files and collect rows in memory
     const newRows = [];
     let newFilesCount = 0;
@@ -152,9 +184,15 @@ function importNewCSVFiles() {
 
       for (let i = CONFIG.SKIP_ROWS; i < csvData.length; i++) {
         const row = csvData[i];
-        const dataRow = importAllCols
+        let dataRow = importAllCols
           ? row
           : CONFIG.COLS_TO_INCLUDE.map(idx => row[idx] ?? '');
+
+        // Convert decimal separators if needed
+        if (needsDecimalConversion) {
+          dataRow = convertRowDecimals(dataRow, csvDecimal, sheetDecimal);
+        }
+
         newRows.push([fileName, ...dataRow]);
       }
 
