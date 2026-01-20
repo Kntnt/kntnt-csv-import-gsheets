@@ -78,8 +78,17 @@
         // Clear old status, start import, then poll for updates
         google.script.run
           .withSuccessHandler(function() {
-            google.script.run.importNewCSVFiles();
+            google.script.run
+              .withFailureHandler(function(err) {
+                statusEl.textContent = 'Failed to start import: ' + (err.message || 'Unknown error');
+                spinnerEl.classList.add('hidden');
+              })
+              .importNewCSVFiles();
             setTimeout(poll, 300);
+          })
+          .withFailureHandler(function(err) {
+            statusEl.textContent = 'Failed to initialize: ' + (err.message || 'Unknown error');
+            spinnerEl.classList.add('hidden');
           })
           .clearImportStatus();
       })();
