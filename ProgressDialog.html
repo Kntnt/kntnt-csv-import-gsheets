@@ -66,8 +66,16 @@
               }
 
               if (result.done) {
-                statusEl.innerHTML = result.message + '<br><br><em>Close this dialog to continue.</em>';
+                statusEl.innerHTML = result.message + '<br><br><a href="#" id="closeLink">Click here to close</a>';
                 spinnerEl.classList.add('hidden');
+                document.getElementById('closeLink').addEventListener('click', function(e) {
+                  e.preventDefault();
+                  this.textContent = 'Closing...';
+                  google.script.run
+                    .withSuccessHandler(function() { google.script.host.close(); })
+                    .withFailureHandler(function() { google.script.host.close(); })
+                    .restoreLocale();
+                });
               } else {
                 statusEl.textContent = result.message;
                 setTimeout(poll, 400);
