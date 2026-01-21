@@ -47,7 +47,7 @@ const CONFIG = {
   CSV_START_ROW: 2,
   CSV_DELIMITER: ',',
   CSV_COLS_TO_INCLUDE: [0, 1, 3, 4, 9, 11],
-  CSV_DECIMAL_SEPARATOR: '.',
+  CSV_LOCALE: 'en_US',
   SHEET_NAME: 'Data',
   SHEET_START_ROW: 2,
   SYNC_DELETIONS: true,
@@ -61,7 +61,7 @@ const CONFIG = {
 | `CSV_START_ROW` | Row number to start reading from in each CSV file (0-indexed). Set to `1` to skip a header row, `2` to skip both header and second row, `0` to import all rows. |
 | `CSV_DELIMITER` | Character separating values in your CSV files: `','`, `';'`, or `'\t'` |
 | `CSV_COLS_TO_INCLUDE` | Zero-indexed array of columns to import (0 = A, 1 = B, etc). Set to `null` or `[]` to import all columns. |
-| `CSV_DECIMAL_SEPARATOR` | Decimal separator used in your CSV files: `'.'` (default) or `','`. If this differs from the spreadsheet's locale, the locale is temporarily switched during import to ensure correct parsing of numbers, percentages, and currencies. |
+| `CSV_LOCALE` | Locale code matching your CSV files' number format (e.g., `'en_US'` for period as decimal separator, `'sv_SE'` for comma). If this differs from the spreadsheet's locale, the spreadsheet locale is temporarily switched during import to ensure correct parsing of numbers, percentages, and currencies. A warning is shown in the dialog when this happens. |
 | `SHEET_NAME` | Name of the sheet tab where data will be imported. Case-sensitive. |
 | `SHEET_START_ROW` | First row in the sheet where data will be written. Use this to preserve header rows or other content at the top. For example, set to `2` to keep row 1 for headers, or `7` to preserve rows 1–6. |
 | `SYNC_DELETIONS` | Set `true` to remove rows when their source CSV is deleted from the folder. |
@@ -115,18 +115,20 @@ The import dialog should appear automatically. Note that it may take a few secon
 
 ## How It Works
 
-1. On spreadsheet open, the trigger displays a modal dialog
-2. The dialog clears any stale status, then starts the import process
-3. The dialog polls for status updates while import runs
-4. The script recursively scans the configured Drive folder and subfolders for CSV files matching `CSV_FILE_REGEX`
-5. Existing data is loaded into memory
-6. If `SYNC_DELETIONS` is enabled, rows from deleted files are filtered out (in memory)
-7. New CSV files are parsed and added to the data (in memory)
-8. If `CSV_DECIMAL_SEPARATOR` differs from the spreadsheet's locale, the locale is temporarily switched
-9. All data is written to the sheet in a single atomic operation
-10. The original locale is restored (if changed)
-11. Formula recalculation triggers once, after all data is in place
-12. The dialog shows a summary and a close button
+1. On spreadsheet open, the trigger checks if the spreadsheet's locale differs from `CSV_LOCALE`
+2. If different, the locale is switched to `CSV_LOCALE` (this reloads the page)
+3. After reload (or if no switch was needed), a modal dialog is displayed
+4. If locale was changed, a warning is shown explaining how to restore it
+5. The dialog clears any stale status, then starts the import process
+6. The dialog polls for status updates while import runs
+7. The script recursively scans the configured Drive folder and subfolders for CSV files matching `CSV_FILE_REGEX`
+8. Existing data is loaded into memory
+9. If `SYNC_DELETIONS` is enabled, rows from deleted files are filtered out (in memory)
+10. New CSV files are parsed and added to the data (in memory)
+11. All data is written to the sheet in a single atomic operation
+12. Formula recalculation triggers once, after all data is in place
+13. The dialog shows a summary and a Close button
+14. When the user clicks Close, the original locale is restored (triggering another page reload)
 
 ## Performance
 
