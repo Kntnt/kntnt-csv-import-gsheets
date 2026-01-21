@@ -4,18 +4,21 @@
     <base target="_top">
     <style>
       * { box-sizing: border-box; }
+
       body {
         font-family: 'Google Sans', Roboto, Arial, sans-serif;
         margin: 0;
         padding: 24px;
         color: #202124;
       }
+
       .status-container {
         min-height: 60px;
         display: flex;
         align-items: center;
         gap: 12px;
       }
+
       .spinner {
         width: 24px;
         height: 24px;
@@ -25,16 +28,20 @@
         animation: spin 0.8s linear infinite;
         flex-shrink: 0;
       }
+
       .spinner.hidden { display: none; }
+
       @keyframes spin {
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
       }
+
       #status {
         font-size: 14px;
         line-height: 1.5;
         word-break: break-word;
       }
+
       .warning {
         margin-top: 16px;
         padding: 12px;
@@ -45,10 +52,12 @@
         line-height: 1.4;
         color: #594300;
       }
+
       .button-container {
         margin-top: 20px;
         text-align: right;
       }
+
       #closeBtn {
         background: #1a73e8;
         color: white;
@@ -60,6 +69,7 @@
         cursor: pointer;
         display: none;
       }
+
       #closeBtn:hover { background: #1557b0; }
       #closeBtn.visible { display: inline-block; }
       #closeBtn:disabled { background: #94c4f7; cursor: default; }
@@ -82,39 +92,53 @@
     </div>
 
     <script>
-      (function() {
-        const statusEl = document.getElementById('status');
-        const spinnerEl = document.getElementById('spinner');
-        const closeBtn = document.getElementById('closeBtn');
+      (function () {
+        'use strict';
 
-        // Backup: restore locale if user closes via X icon
+        var statusEl = document.getElementById('status');
+        var spinnerEl = document.getElementById('spinner');
+        var closeBtn = document.getElementById('closeBtn');
+
+        /**
+         * Attempt to restore locale if user closes dialog via X button.
+         * Note: setCloseHandler is not fully reliable, so users are warned
+         * to use the Close button instead for guaranteed locale restoration.
+         */
         try {
-          google.script.host.setCloseHandler(function() {
+          google.script.host.setCloseHandler(function () {
             google.script.run.restoreLocale();
           });
         } catch (e) {
-          // Ignore
+          // setCloseHandler may not be available in all contexts
         }
 
-        // Close button handler
-        closeBtn.addEventListener('click', function() {
+        /**
+         * Close button click handler.
+         * Restores the original locale before closing the dialog.
+         */
+        closeBtn.addEventListener('click', function () {
           closeBtn.disabled = true;
           closeBtn.textContent = 'Closing...';
           google.script.run
-            .withSuccessHandler(function() { google.script.host.close(); })
-            .withFailureHandler(function() { google.script.host.close(); })
+            .withSuccessHandler(function () { google.script.host.close(); })
+            .withFailureHandler(function () { google.script.host.close(); })
             .restoreLocale();
         });
 
+        /**
+         * Polls the server for import status updates.
+         * Updates the UI and schedules the next poll until import is complete.
+         */
         function poll() {
           google.script.run
-            .withSuccessHandler(function(result) {
+            .withSuccessHandler(function (result) {
               if (!result || !result.message) {
                 setTimeout(poll, 400);
                 return;
               }
 
               statusEl.textContent = result.message;
+
               if (result.done) {
                 spinnerEl.classList.add('hidden');
                 closeBtn.classList.add('visible');
@@ -122,7 +146,7 @@
                 setTimeout(poll, 400);
               }
             })
-            .withFailureHandler(function(err) {
+            .withFailureHandler(function (err) {
               statusEl.textContent = 'Error: ' + (err.message || 'Connection lost');
               spinnerEl.classList.add('hidden');
               closeBtn.classList.add('visible');
@@ -130,19 +154,19 @@
             .getImportStatus();
         }
 
-        // Clear old status, start import, then poll
+        // Initialize: clear any stale status, start the import, then begin polling
         google.script.run
-          .withSuccessHandler(function() {
+          .withSuccessHandler(function () {
             google.script.run.importNewCSVFiles();
             setTimeout(poll, 500);
           })
-          .withFailureHandler(function(err) {
+          .withFailureHandler(function (err) {
             statusEl.textContent = 'Error: ' + (err.message || 'Failed to start');
             spinnerEl.classList.add('hidden');
             closeBtn.classList.add('visible');
           })
           .clearImportStatus();
-      })();
+      }());
     </script>
   </body>
 </html>
