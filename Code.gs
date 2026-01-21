@@ -10,32 +10,20 @@ const CONFIG = {
   CSV_START_ROW: 2,
   CSV_DELIMITER: ',',
   CSV_COLS_TO_INCLUDE: [0, 1, 3, 4, 9, 11],
-  CSV_DECIMAL_SEPARATOR: '.',
+  CSV_LOCALE: 'en_US',
   SHEET_NAME: 'Data',
   SHEET_START_ROW: 2,
   SYNC_DELETIONS: true,
 };
 
-/**
- * Locales for each decimal separator type.
- * Used when temporarily switching locale during import.
- */
-const DECIMAL_LOCALES = {
-  '.': 'en_US',
-  ',': 'sv_SE',
-};
+/** Property key for storing original locale during import. */
+const ORIGINAL_LOCALE_KEY = 'originalLocale';
 
-/**
- * Guard timeout in milliseconds.
- * If import completed within this time, skip showing dialog on reload.
- */
-const IMPORT_GUARD_TIMEOUT_MS = 30000;
+/** Property key to prevent restart after locale restore. */
+const IMPORT_DONE_KEY = 'importDone';
 
 /**
  * Recursively collects CSV files from a folder that match CSV_FILE_REGEX.
- * @param {Folder} rootFolder - The root folder to search
- * @param {string} regexPattern - The regex pattern to match file paths
- * @returns {Map} A Map of relative path -> file object
  */
 function getMatchingFiles(rootFolder, regexPattern) {
   const regex = new RegExp(regexPattern, 'i');
@@ -47,7 +35,6 @@ function getMatchingFiles(rootFolder, regexPattern) {
       const file = files.next();
       const fileName = file.getName();
       const relativePath = pathPrefix ? `${pathPrefix}/${fileName}` : fileName;
-
       if (regex.test(relativePath)) {
         result.set(relativePath, file);
       }
@@ -68,42 +55,77 @@ function getMatchingFiles(rootFolder, regexPattern) {
 
 /**
  * Entry point for the installable onOpen trigger.
- * Displays the progress dialog which then initiates the import.
- * Skips if import was recently completed (to avoid double-trigger from locale restore).
+ *
+ * Flow:
+ * 1. If locale needs to change: save original, change locale, return (page reloads)
+ * 2. After reload (or if no change needed): show dialog
  */
 function onOpenTrigger() {
   const props = PropertiesService.getScriptProperties();
-  const lastImport = props.getProperty('lastImportTime');
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const currentLocale = ss.getSpreadsheetLocale();
+  const savedLocale = props.getProperty(ORIGINAL_LOCALE_KEY);
+  const importDone = props.getProperty(IMPORT_DONE_KEY);
 
-  if (lastImport) {
-    const elapsed = Date.now() - parseInt(lastImport, 10);
-    if (elapsed < IMPORT_GUARD_TIMEOUT_MS) {
-      props.deleteProperty('lastImportTime');
-      return;
-    }
+  console.log('onOpenTrigger: currentLocale=' + currentLocale + ', CSV_LOCALE=' + CONFIG.CSV_LOCALE + ', savedLocale=' + savedLocale + ', importDone=' + importDone);
+
+  // If import just completed and locale was restored, don't restart
+  if (importDone) {
+    console.log('onOpenTrigger: Import was just completed, clearing flag and exiting');
+    props.deleteProperty(IMPORT_DONE_KEY);
+    return;
   }
 
-  const html = HtmlService.createHtmlOutputFromFile('ProgressDialog')
+  // If we haven't switched to CSV locale yet, do it now
+  // This triggers a page reload, after which we'll show the dialog
+  if (currentLocale !== CONFIG.CSV_LOCALE && !savedLocale) {
+    console.log('onOpenTrigger: Switching locale from ' + currentLocale + ' to ' + CONFIG.CSV_LOCALE);
+    props.setProperty(ORIGINAL_LOCALE_KEY, currentLocale);
+    ss.setSpreadsheetLocale(CONFIG.CSV_LOCALE);
+    return; // Page will reload
+  }
+
+  // Show dialog - either after locale switch or if no switch was needed
+  const template = HtmlService.createTemplateFromFile('ProgressDialog');
+  template.originalLocale = savedLocale || '';
+  template.currentLocale = CONFIG.CSV_LOCALE;
+
+  const dialogHeight = savedLocale ? 250 : 180;
+  const html = template.evaluate()
     .setWidth(450)
-    .setHeight(180);
+    .setHeight(dialogHeight);
   SpreadsheetApp.getUi().showModalDialog(html, 'CSV Import');
 }
 
 /**
- * Clears import status. Called by dialog before starting import.
+ * Restores the original locale after import completes.
+ * Called by the dialog's closeHandler when user closes the dialog.
  */
-function clearImportStatus() {
-  PropertiesService.getScriptProperties().deleteProperty('importStatus');
+function restoreLocale() {
+  const props = PropertiesService.getScriptProperties();
+  const savedLocale = props.getProperty(ORIGINAL_LOCALE_KEY);
+
+  console.log('restoreLocale: savedLocale=' + savedLocale);
+
+  if (savedLocale) {
+    // Set flag BEFORE changing locale to prevent onOpenTrigger from restarting
+    props.setProperty(IMPORT_DONE_KEY, 'true');
+    props.deleteProperty(ORIGINAL_LOCALE_KEY);
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const currentLocale = ss.getSpreadsheetLocale();
+    console.log('restoreLocale: currentLocale=' + currentLocale + ', restoring to ' + savedLocale);
+    if (currentLocale !== savedLocale) {
+      ss.setSpreadsheetLocale(savedLocale);
+      // Page will reload, onOpenTrigger will see IMPORT_DONE_KEY and exit
+    }
+  } else {
+    console.log('restoreLocale: No saved locale found');
+  }
 }
 
 /**
  * Main sync logic. Called by the dialog via google.script.run.
- *
- * Uses atomic batch processing: all data changes (deletions + additions) are
- * collected in memory and written in a single setValues() call.
- *
- * If CSV_DECIMAL_SEPARATOR differs from the spreadsheet's locale, the locale
- * is temporarily switched during import to ensure correct number parsing.
  */
 function importNewCSVFiles() {
   const props = PropertiesService.getScriptProperties();
@@ -112,17 +134,24 @@ function importNewCSVFiles() {
     props.setProperty('importStatus', JSON.stringify({ message, done }));
   }
 
-  let originalLocale = null;
-  let ss = null;
+  let currentStep = 'initializing';
+  let currentFile = null;
 
   try {
     updateStatus('Initializing...');
 
-    ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // Log locale at import time to verify it changed
+    const importLocale = ss.getSpreadsheetLocale();
+    console.log('importNewCSVFiles: Current locale at import time = ' + importLocale + ', expected = ' + CONFIG.CSV_LOCALE);
+
     const sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
+    currentStep = 'accessing folder';
     const folder = DriveApp.getFolderById(CONFIG.CSV_FOLDER_ID);
     const { SHEET_START_ROW: startRow } = CONFIG;
 
+    currentStep = 'scanning for files';
     updateStatus('Scanning for files...');
     const folderFiles = getMatchingFiles(folder, CONFIG.CSV_FILE_REGEX);
 
@@ -164,11 +193,13 @@ function importNewCSVFiles() {
     const importAllCols = !CONFIG.CSV_COLS_TO_INCLUDE
       || CONFIG.CSV_COLS_TO_INCLUDE.length === 0;
 
+    currentStep = 'reading CSV files';
     folderFiles.forEach((file, fileName) => {
       if (existingSet.has(fileName)) {
         return;
       }
 
+      currentFile = fileName;
       updateStatus(`Reading: ${fileName}`);
 
       const csvContent = file.getBlob().getDataAsString('UTF-8');
@@ -193,19 +224,10 @@ function importNewCSVFiles() {
     const finalData = [...filteredData, ...newRows];
     const hasChanges = deletedRowsCount > 0 || newRows.length > 0;
 
+    currentFile = null;
     if (hasChanges) {
+      currentStep = 'writing data';
       updateStatus('Writing data...');
-
-      // Temporarily change locale if CSV uses different decimal separator
-      const csvLocale = DECIMAL_LOCALES[CONFIG.CSV_DECIMAL_SEPARATOR];
-      originalLocale = ss.getSpreadsheetLocale();
-
-      if (csvLocale && originalLocale !== csvLocale) {
-        ss.setSpreadsheetLocale(csvLocale);
-        SpreadsheetApp.flush();
-      } else {
-        originalLocale = null;
-      }
 
       if (sheetLastRow >= startRow) {
         sheet.getRange(startRow, 1, sheetLastRow - startRow + 1, sheetLastCol).clearContent();
@@ -224,37 +246,22 @@ function importNewCSVFiles() {
           .setValues(normalizedData);
       }
 
-      // Restore original locale (may trigger page reload)
-      if (originalLocale) {
-        SpreadsheetApp.flush();
-        props.setProperty('lastImportTime', String(Date.now()));
-        ss.setSpreadsheetLocale(originalLocale);
-        originalLocale = null;
-      }
+      SpreadsheetApp.flush();
     }
 
     const summary = buildSummary(newFilesCount, newRows.length, deletedFilesCount, deletedRowsCount);
     updateStatus(summary, true);
   } catch (error) {
-    if (originalLocale && ss) {
-      try {
-        props.setProperty('lastImportTime', String(Date.now()));
-        ss.setSpreadsheetLocale(originalLocale);
-      } catch (restoreError) {
-        // Ignore restore errors
-      }
-    }
-    updateStatus(`Error: ${error.message}`, true);
+    const errorMsg = error.message || 'Unknown error';
+    const context = currentFile
+      ? `Error while ${currentStep} (${currentFile}): ${errorMsg}`
+      : `Error while ${currentStep}: ${errorMsg}`;
+    updateStatus(context, true);
   }
 }
 
 /**
  * Builds a human-readable summary of the sync operation.
- * @param {number} newFiles - Number of new files imported
- * @param {number} newRows - Number of new rows added
- * @param {number} deletedFiles - Number of files deleted
- * @param {number} deletedRows - Number of rows removed
- * @returns {string} A summary message
  */
 function buildSummary(newFiles, newRows, deletedFiles, deletedRows) {
   const parts = [];
@@ -276,9 +283,16 @@ function buildSummary(newFiles, newRows, deletedFiles, deletedRows) {
 
 /**
  * Returns current import status. Polled by the dialog UI.
- * @returns {Object|null} The current status object or null
  */
 function getImportStatus() {
   const status = PropertiesService.getScriptProperties().getProperty('importStatus');
   return status ? JSON.parse(status) : null;
 }
+
+/**
+ * Clears import status. Called by dialog before starting import.
+ */
+function clearImportStatus() {
+  PropertiesService.getScriptProperties().deleteProperty('importStatus');
+}
+

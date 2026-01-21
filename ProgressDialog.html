@@ -26,20 +26,30 @@
         flex-shrink: 0;
       }
       .spinner.hidden { display: none; }
-      @keyframes spin { 
+      @keyframes spin {
         0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); } 
+        100% { transform: rotate(360deg); }
       }
       #status {
         font-size: 14px;
         line-height: 1.5;
         word-break: break-word;
       }
+      .warning {
+        margin-top: 16px;
+        padding: 12px;
+        background: #fef7e0;
+        border: 1px solid #f9ab00;
+        border-radius: 4px;
+        font-size: 12px;
+        line-height: 1.4;
+        color: #594300;
+      }
       .button-container {
         margin-top: 20px;
         text-align: right;
       }
-      button {
+      #closeBtn {
         background: #1a73e8;
         color: white;
         border: none;
@@ -50,17 +60,25 @@
         cursor: pointer;
         display: none;
       }
-      button:hover { background: #1557b0; }
-      button.visible { display: inline-block; }
+      #closeBtn:hover { background: #1557b0; }
+      #closeBtn.visible { display: inline-block; }
+      #closeBtn:disabled { background: #94c4f7; cursor: default; }
     </style>
   </head>
   <body>
     <div class="status-container">
       <div id="spinner" class="spinner"></div>
-      <div id="status">Starting import...</div>
+      <div id="status">Connecting...</div>
     </div>
+    <? if (originalLocale) { ?>
+    <div class="warning">
+      <strong>OBS!</strong> Locale har tillfälligt ändrats från <strong><?= originalLocale ?></strong> till <strong><?= currentLocale ?></strong> för att importera CSV-filer korrekt.
+      Klicka på <strong>Close</strong>-knappen när importen är klar för att återställa locale automatiskt.
+      Om du stänger med X måste du manuellt ändra tillbaka locale i kalkylbladets inställningar.
+    </div>
+    <? } ?>
     <div class="button-container">
-      <button id="closeBtn" onclick="google.script.host.close()">Close</button>
+      <button id="closeBtn">Close</button>
     </div>
 
     <script>
@@ -68,6 +86,25 @@
         const statusEl = document.getElementById('status');
         const spinnerEl = document.getElementById('spinner');
         const closeBtn = document.getElementById('closeBtn');
+
+        // Backup: restore locale if user closes via X icon
+        try {
+          google.script.host.setCloseHandler(function() {
+            google.script.run.restoreLocale();
+          });
+        } catch (e) {
+          // Ignore
+        }
+
+        // Close button handler
+        closeBtn.addEventListener('click', function() {
+          closeBtn.disabled = true;
+          closeBtn.textContent = 'Closing...';
+          google.script.run
+            .withSuccessHandler(function() { google.script.host.close(); })
+            .withFailureHandler(function() { google.script.host.close(); })
+            .restoreLocale();
+        });
 
         function poll() {
           google.script.run
@@ -86,18 +123,23 @@
               }
             })
             .withFailureHandler(function(err) {
-              statusEl.textContent = 'Error: ' + err.message;
+              statusEl.textContent = 'Error: ' + (err.message || 'Connection lost');
               spinnerEl.classList.add('hidden');
               closeBtn.classList.add('visible');
             })
             .getImportStatus();
         }
 
-        // Clear old status first (synchronously via callback), then start import, then poll
+        // Clear old status, start import, then poll
         google.script.run
           .withSuccessHandler(function() {
             google.script.run.importNewCSVFiles();
-            setTimeout(poll, 300);
+            setTimeout(poll, 500);
+          })
+          .withFailureHandler(function(err) {
+            statusEl.textContent = 'Error: ' + (err.message || 'Failed to start');
+            spinnerEl.classList.add('hidden');
+            closeBtn.classList.add('visible');
           })
           .clearImportStatus();
       })();
