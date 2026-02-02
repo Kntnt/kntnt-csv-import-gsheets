@@ -46,7 +46,7 @@ const CONFIG = {
   CSV_FILE_REGEX: '\\.csv$',
   CSV_START_ROW: 2,
   CSV_DELIMITER: ',',
-  CSV_COLS_TO_INCLUDE: [0, 1, 3, 4, 9, 11],
+  CSV_COLS_TO_INCLUDE: [1, 2, 4, 5, 10, 12],
   CSV_LOCALE: 'en_US',
   SHEET_NAME: 'Data',
   SHEET_START_ROW: 2,
@@ -58,9 +58,9 @@ const CONFIG = {
 |--------|-------------|
 | `CSV_FOLDER_ID` | Google Drive folder ID containing your CSV files. Find it in the folder's URL: `drive.google.com/drive/folders/[FOLDER_ID]` |
 | `CSV_FILE_REGEX` | Regex pattern to filter which CSV files to import. Matches against the relative path from the root folder. See examples below. |
-| `CSV_START_ROW` | Row number to start reading from in each CSV file (0-indexed). Set to `1` to skip a header row, `2` to skip both header and second row, `0` to import all rows. |
+| `CSV_START_ROW` | Row number to start reading from in each CSV file (1-indexed). Set to `2` to skip a header row, `3` to skip both header and second row, `1` to import all rows. |
 | `CSV_DELIMITER` | Character separating values in your CSV files: `','`, `';'`, or `'\t'` |
-| `CSV_COLS_TO_INCLUDE` | Zero-indexed array of columns to import (0 = A, 1 = B, etc). Set to `null` or `[]` to import all columns. |
+| `CSV_COLS_TO_INCLUDE` | Array of column numbers to import (1 = first column, 2 = second column, etc). Set to `null` or `[]` to import all columns. |
 | `CSV_LOCALE` | Locale code matching your CSV files' number format (e.g., `'en_US'` for period as decimal separator, `'sv_SE'` for comma). If this differs from the spreadsheet's locale, the spreadsheet locale is temporarily switched during import to ensure correct parsing of numbers, percentages, and currencies. A warning is shown in the dialog when this happens. |
 | `SHEET_NAME` | Name of the sheet tab where data will be imported. Case-sensitive. |
 | `SHEET_START_ROW` | First row in the sheet where data will be written. Use this to preserve header rows or other content at the top. For example, set to `2` to keep row 1 for headers, or `7` to preserve rows 1–6. |
