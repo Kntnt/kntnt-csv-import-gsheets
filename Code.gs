@@ -13,7 +13,7 @@ const CONFIG = {
   CSV_FILE_REGEX: '\\.csv$',
   CSV_START_ROW: 2,
   CSV_DELIMITER: ',',
-  CSV_COLS_TO_INCLUDE: [0, 1, 3, 4, 9, 11],
+  CSV_COLS_TO_INCLUDE: [1, 2, 4, 5, 10, 12],
   CSV_LOCALE: 'en_US',
   SHEET_NAME: 'Data',
   SHEET_START_ROW: 2,
@@ -220,7 +220,7 @@ function importNewCSVFiles() {
         const row = csvData[i];
         const dataRow = importAllCols
           ? row
-          : CONFIG.CSV_COLS_TO_INCLUDE.map((idx) => row[idx] ?? '');
+          : CONFIG.CSV_COLS_TO_INCLUDE.map((col) => row[col - 1] ?? '');
 
         newRows.push([fileName, ...dataRow]);
       }
