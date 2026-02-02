@@ -212,11 +212,11 @@ function importNewCSVFiles() {
       const csvContent = file.getBlob().getDataAsString('UTF-8');
       const csvData = Utilities.parseCsv(csvContent, CONFIG.CSV_DELIMITER);
 
-      if (csvData.length <= CONFIG.CSV_START_ROW) {
+      if (csvData.length < CONFIG.CSV_START_ROW) {
         return;
       }
 
-      for (let i = CONFIG.CSV_START_ROW; i < csvData.length; i += 1) {
+      for (let i = CONFIG.CSV_START_ROW - 1; i < csvData.length; i += 1) {
         const row = csvData[i];
         const dataRow = importAllCols
           ? row
