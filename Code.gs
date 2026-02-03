@@ -157,7 +157,7 @@ function importNewCSVFiles() {
     const folderFiles = getMatchingFiles(folder, CONFIG.CSV_FILE_REGEX);
 
     const sheetLastRow = sheet.getLastRow();
-    const sheetLastCol = sheet.getLastColumn() || 1;
+    const sheetLastCol = 1 + CONFIG.CSV_COLS_TO_INCLUDE.length;
 
     // Load existing data from sheet
     let existingData = [];
